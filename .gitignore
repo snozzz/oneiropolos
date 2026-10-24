@@ -1,0 +1,11 @@
+# build output (npm run build:app)
+dist/
+
+# agent scratch data, run logs and memory — local only
+.workbuddy/
+
+node_modules/
+npm-debug.log*
+*.log
+
+.DS_Store

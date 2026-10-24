@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="__WBLOOP_LANG__" data-theme="__WBLOOP_THEME__">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="wbloop-token" content="__WBLOOP_TOKEN__">
+  <title>Oneiropolos</title>
+  <link rel="icon" href="/logo.png" type="image/png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <img src="/logo.png" alt="">
+        <div class="names"><span class="zh" id="brand-name">Oneiropolos</span><span class="la" id="brand-sub"></span></div>
+      </div>
+      <div class="side-actions">
+        <button class="side-btn new" id="btn-new" type="button"><span data-icon="plus"></span><span data-i18n="side.newTask"></span><span class="kbd">⌘N</span></button>
+        <button class="side-btn" id="btn-palette" type="button"><span data-icon="search"></span><span data-i18n="side.search"></span><span class="kbd">⌘K</span></button>
+      </div>
+      <div class="side-scroll" id="side-scroll">
+        <div class="side-label hidden" id="label-active"><span data-i18n="side.active"></span> <span class="n" id="n-active"></span></div>
+        <ul class="run-list" id="list-active"></ul>
+        <div class="side-label" id="label-recent" data-i18n="side.recent"></div>
+        <ul class="run-list" id="list-recent"></ul>
+      </div>
+      <div class="side-foot">
+        <button class="acct" id="chip-gpt" type="button"><span class="dot"></span><span class="name">GPT</span><span class="val" data-i18n="acct.checking"></span></button>
+        <button class="acct" id="chip-wb" type="button"><span class="dot"></span><span class="name">WorkBuddy</span><span class="val" data-i18n="acct.checking"></span></button>
+        <div class="foot-row">
+          <button class="side-btn" id="btn-settings" type="button"><span data-icon="gear"></span><span data-i18n="settings.title"></span></button>
+          <button class="side-btn" id="btn-help" type="button" style="width:auto"><span data-icon="help"></span><span data-i18n="side.help"></span></button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <!-- new task (home) -->
+      <section id="view-new" class="view home">
+        <div class="home-inner">
+          <div class="hero">
+            <div class="orn" id="hero-orn"></div>
+            <h1 class="quote" id="hero-quote"></h1>
+            <div class="quote-src" id="hero-src"></div>
+            <p class="lede" id="hero-lede"></p>
+          </div>
+          <div class="composer big" id="home-composer">
+            <textarea id="f-goal" rows="4" spellcheck="false" data-i18n-placeholder="home.goalPlaceholder"></textarea>
+            <div class="composer-tools">
+              <button class="tool-chip" id="btn-pick" type="button"><span data-icon="folder"></span><span id="dir-label" data-i18n="home.pickDir"></span></button>
+              <button class="tool-chip" id="btn-params" type="button" data-i18n-title="home.paramsTitle"><span data-icon="sliders"></span><span id="params-label" data-i18n="home.paramsTitle"></span></button>
+              <button class="tool-chip" id="btn-team" type="button" data-i18n-title="home.teamTitle"><span data-icon="team"></span><span id="team-label" data-i18n="home.teamOff"></span></button>
+              <button class="tool-chip" id="btn-mode" type="button" data-i18n-title="home.modeTitle"><span data-icon="list"></span><span id="mode-label" data-i18n="mode.normal"></span></button>
+              <button class="tool-chip" id="btn-schedule" type="button" data-i18n-title="home.scheduleTitle"><span data-icon="clock"></span><span id="schedule-label" data-i18n="schedule.now"></span></button>
+              <span class="spacer"></span>
+              <span class="kbd-hint" data-i18n="home.startHint"></span>
+              <button class="send-btn" id="btn-start" type="button" data-i18n-title="home.start" data-i18n-aria="home.start"><span data-icon="send"></span></button>
+            </div>
+          </div>
+          <div class="home-error error" id="new-error"></div>
+          <div class="recent" id="recent-dirs"></div>
+
+          <div class="home-section hidden" id="home-active">
+            <div class="rule-label"><span class="gem">◆</span><span data-i18n="home.inProgress"></span><span class="gem">◆</span></div>
+            <div class="active-list" id="active-list"></div>
+          </div>
+
+          <div class="home-section">
+            <div class="rule-label"><span class="gem">◆</span><span data-i18n="home.templates"></span><span class="gem">◆</span></div>
+            <div class="tpl-grid" id="tpl-list"></div>
+            <div class="tpl-save hidden" id="tpl-save">
+              <input id="tpl-name" type="text" maxlength="30" data-i18n-placeholder="home.templateNamePlaceholder" autocomplete="off">
+              <button class="btn sm primary" id="tpl-save-ok" type="button" data-i18n="common.save"></button>
+              <button class="btn sm ghost" id="tpl-save-cancel" type="button" data-i18n="common.cancel"></button>
+            </div>
+            <div class="home-foot" data-i18n="home.templatesFoot"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- a task -->
+      <section id="view-run" class="view chat hidden">
+        <header class="chat-head" id="run-header"></header>
+        <div class="chat-body">
+          <div class="chat-col">
+            <div class="chat-scroll" id="chat-scroll">
+              <div class="thread" id="timeline"></div>
+            </div>
+            <div class="chat-foot">
+              <div class="approvals" id="approvals"></div>
+              <div class="notice hidden" id="run-notice"></div>
+              <div class="composer" id="run-composer">
+                <textarea id="msg-input" rows="1" data-i18n-placeholder="run.placeholder"></textarea>
+                <div class="composer-tools">
+                  <span class="composer-hint" id="composer-hint"></span>
+                  <span class="spacer"></span>
+                  <button class="send-btn" id="btn-send" type="button" data-i18n-title="run.send" data-i18n-aria="run.send" disabled><span data-icon="send"></span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <aside class="drawer hidden" id="aside-drawer">
+            <div class="drawer-head">
+              <div style="flex:1;min-width:0"><h3 data-i18n="cmd.btw"></h3><div class="sub" data-i18n="run.asideSub"></div></div>
+              <button class="icon-btn" id="aside-close" type="button" data-i18n-aria="common.close"><span data-icon="close"></span></button>
+            </div>
+            <div class="drawer-body" id="aside-list"></div>
+            <div class="drawer-foot">
+              <div class="composer" id="aside-composer">
+                <textarea id="aside-input" rows="1" data-i18n-placeholder="run.asidePlaceholder"></textarea>
+                <div class="composer-tools"><span class="composer-hint" data-i18n="run.asideHint"></span><span class="spacer"></span>
+                  <button class="send-btn" id="aside-send" type="button" data-i18n-aria="run.ask" disabled><span data-icon="send"></span></button></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal hidden" id="modal">
+    <div class="modal-card narrow" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <div class="titles"><h3 id="modal-title"></h3><div class="subtitle" id="modal-subtitle"></div></div>
+        <button class="icon-btn" id="modal-close" type="button" data-i18n-aria="common.close"></button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-foot hidden" id="modal-foot"></div>
+    </div>
+  </div>
+
+  <div class="popover hidden" id="popover"></div>
+  <div class="toast hidden" id="toast"></div>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

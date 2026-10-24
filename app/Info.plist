@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Oneiropolos</string>
+  <key>CFBundleDisplayName</key>
+  <string>Oneiropolos</string>
+  <!-- shown as 守梦人 / 夢守 on Chinese / Japanese systems (<lang>.lproj/InfoPlist.strings); the file name stays Latin for the terminal and Spotlight -->
+  <key>LSHasLocalizedDisplayName</key>
+  <true/>
+  <key>CFBundleIdentifier</key>
+  <string>local.wbloop.app</string>
+  <key>CFBundleVersion</key>
+  <string>__VERSION__</string>
+  <key>CFBundleShortVersionString</key>
+  <string>__VERSION__</string>
+  <key>CFBundleExecutable</key>
+  <string>Oneiropolos</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>zh-Hans</string>
+    <string>ja</string>
+  </array>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSHumanReadableCopyright</key>
+  <string>Oneiropolos · 守梦人 · 夢守 — GPT plans and audits, WorkBuddy executes</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+  <key>WBLoopRoot</key>
+  <string>__ROOT__</string>
+  <key>WBLoopNode</key>
+  <string>__NODE__</string>
+</dict>
+</plist>
