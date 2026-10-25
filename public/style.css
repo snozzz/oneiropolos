@@ -798,15 +798,17 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; flex: none; accen
 .modal-foot { display: flex; align-items: center; gap: 8px; padding: 13px 24px 15px; border-top: 1px solid var(--line); background: var(--bg); }
 .modal-foot .note { margin-right: auto; font-size: 12px; color: var(--muted); line-height: 1.5; }
 .modal-body p { margin: 0 0 12px; }
-.modal-card.tabs .modal-body { padding: 0; display: flex; min-height: 440px; }
-.tab-nav { width: 184px; flex: none; padding: 10px 10px 16px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.modal-card.tabs { height: min(700px, calc(100vh - 56px)); }
+/* a fixed height: switching sections must not resize the dialog; only the pane scrolls */
+.modal-card.tabs .modal-body { padding: 0; display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.tab-nav { width: 184px; flex: none; padding: 10px 10px 16px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; overflow: auto; }
 .tab-nav button { text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 7px 11px; font-size: 13px; color: var(--ink-2); cursor: pointer; display: flex; align-items: center; gap: 9px; }
 .tab-nav button svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
 .tab-nav button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-nav button:hover { background: var(--surface-2); color: var(--ink); }
 .tab-nav button.on { background: var(--gold-soft); color: var(--ink); font-weight: 500; }
 .tab-nav button.on svg { color: var(--gold); }
-.tab-panes { flex: 1; min-width: 0; padding: 8px 26px 20px; overflow: auto; }
+.tab-panes { flex: 1; min-width: 0; padding: 8px 26px 20px; overflow: auto; scrollbar-gutter: stable; }
 .tab-pane { display: none; }
 .tab-pane.on { display: block; }
 .pane-title { font-family: var(--font-serif); font-size: 15px; font-weight: 600; margin: 10px 0 4px; }

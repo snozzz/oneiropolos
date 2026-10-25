@@ -142,6 +142,7 @@ export async function openSettings(tab = 'general') {
     b.onclick = () => {
       $$('.tab-nav [data-tab]', body).forEach((x) => x.classList.toggle('on', x === b));
       $$('.tab-pane', body).forEach((p) => p.classList.toggle('on', p.dataset.pane === b.dataset.tab));
+      $('.tab-panes', body).scrollTop = 0;
     };
   });
 
