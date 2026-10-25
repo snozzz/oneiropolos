@@ -153,7 +153,7 @@ export function renderHeader() {
     <div class="chat-sub">
       <span class="status"><span class="sglyph ${esc(status)}"><span class="pip"></span></span>${esc(phase)}</span>
       <span>${esc(t('run.roundOf', { n: s.round, max: set.loop?.maxRounds ?? '?' }))}</span>
-      <span>${esc(t('home.progress', { n: s.progress ?? 0 }))}</span>
+      ${status === 'done' ? '' : `<span>${esc(t('home.progress', { n: s.progress ?? 0 }))}</span>`}
       ${(() => {
         const d = fmtDuration(isScheduled(s) ? Date.parse(s.scheduledAt) - Date.now() : elapsed);
         return d ? `<span>${esc(isScheduled(s) ? t('run.startsIn', { d }) : t('run.elapsed', { d }))}</span>` : '';
@@ -449,7 +449,8 @@ function renderGptResult(c, out, meta) {
   }
   $('.g-body', c.node).innerHTML = html;
   $('.g-verdict', c.node).innerHTML = `<span class="verdict ${esc(out.verdict)}">${esc(tVerdict(out.verdict))}</span>`;
-  $('.g-meta', c.node).textContent = [meta, Number.isFinite(out.progress) ? t('home.progress', { n: out.progress }) : ''].filter(Boolean).join(' · ');
+  // progress lives in the header and the plan; the card keeps model and time only
+  $('.g-meta', c.node).textContent = meta || '';
   app.t.lastGpt = [out.assessment, out.next_instruction ? `\n${t('run.toWb')}:\n${out.next_instruction}` : ''].filter(Boolean).join('\n');
   fixCollapsibles(c.node);
 }

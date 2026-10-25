@@ -577,7 +577,7 @@ function acctCard(id, flow) {
   const roles = rolesUsing(id);
   let sub;
   if (!st.installed) sub = `<span class="muted">${esc(t('acct.notInstalled'))}</span>`;
-  else if (st.loggedIn) sub = esc([st.account, st.plan, id === 'chatgpt' && app.quota ? quotaText(app.quota) : ''].filter(Boolean).join(' · ') || t('acct.loggedIn'));
+  else if (st.loggedIn) sub = esc([st.account === ENGINE_VENDORS[id] ? '' : st.account, st.plan, id === 'chatgpt' && app.quota ? quotaText(app.quota) : ''].filter(Boolean).join(' · ') || t('acct.loggedIn'));
   else sub = `<span class="muted">${esc(t('acct.notLoggedIn'))}</span>`;
   let action = '';
   if (!st.installed) {
