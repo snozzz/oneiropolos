@@ -4,23 +4,25 @@
 
 > 你打个盹，它替你照看这场梦。
 
-一个本地的双智能体闭环编排器（macOS App、浏览器界面和命令行）：
+一个本地的双智能体闭环编排器（macOS App、浏览器界面和命令行）。两个角色，谁来担任由你选：
 
-- **GPT（总控 / 审计员）**：通过官方 Codex CLI 调用，用的是你的 **ChatGPT 订阅**额度。负责调研、拆计划、每轮给 WorkBuddy 下一条指令，并在每轮结束后读 diff、亲自看文件、跑测试，然后决定下一步。
-- **WorkBuddy（执行者）**：通过 WorkBuddy.app 自带的内核（CodeBuddy Code CLI）以无界面模式运行，用的是你的 **WorkBuddy 账号**。负责真正读写文件、运行命令——可以一个人干，也可以组成**团队**并行干。
+- **审计（主管）**：调研、拆计划、每轮给执行方一条指令；每轮结束后读 diff、亲自看文件、跑测试，再决定下一步。它从不改动你的项目。
+- **执行**：真正读写文件、运行命令——可以一个人干，也可以组成**团队**并行干。
 
-循环一直进行，直到 GPT 判定目标完成；之后默认再开一个不知道前情的全新 GPT 会话做独立验收。WorkBuddy 单次跑不长（有步数上限、会中途停下）的问题，由程序自动续跑和 GPT 的逐轮指令解决。
+两个角色都可以是 **GPT**（Codex CLI，ChatGPT 订阅）、**Claude**（Claude Code，Claude 订阅）、**DeepSeek**（DeepSeek Harness，DeepSeek 账号或 API key）或 **WorkBuddy**（WorkBuddy.app 自带的内核，WorkBuddy 账号）。默认是 GPT 审计、WorkBuddy 执行。每个引擎在 **设置 → 账户** 里登录一次，与它自己的 App 互不影响。
+
+循环一直进行，直到审计方判定目标完成；之后默认再开一个不知道前情的全新会话做独立验收。执行方单次跑不长（有步数上限、会中途停下）的问题，由程序自动续跑和逐轮指令解决。
 
 ```
-你的目标 ─▶ GPT 规划 ─▶ ┌──────────────────────────────────────────────────────┐
-（先出计划模式：         │ 第 N 轮：WorkBuddy 执行指令                              │
+你的目标 ─▶ 审计方规划 ─▶┌──────────────────────────────────────────────────────┐
+（先出计划模式：         │ 第 N 轮：执行方完成指令                                  │
   你批准后才动手）        │         （或 2–3 个队友并行，结束后用 git 合并）          │
                         │      ↓ 影子 git 快照 · 验收命令自动运行                   │
-                        │ GPT 审计：读 diff、看文件、跑测试 → 下一条指令             │
+                        │ 审计方：读 diff、看文件、跑测试 → 下一条指令              │
                         └───────────────────── 继续 ◀──────────────────────────────┘
                                                │ 完成
                                                ▼
-                               全新 GPT 会话独立验收 ─▶ 结束（或继续修复）
+                               全新会话独立验收 ─▶ 结束（或继续修复）
 ```
 
 ### 名字
@@ -34,8 +36,11 @@
 | 需要 | 说明 |
 |---|---|
 | macOS + Node.js ≥ 20 | 例如 `brew install node` 或 nvm |
-| Codex CLI | `npm i -g @openai/codex`，然后 `codex login` 选择用 ChatGPT 登录 |
-| WorkBuddy.app | 装在“应用程序”里即可，登录见下文 |
+| 用到的引擎 | 四个里任选；默认组合需要 GPT 和 WorkBuddy |
+| · GPT | Codex CLI：`npm i -g @openai/codex` |
+| · Claude | Claude Code：`npm i -g @anthropic-ai/claude-code` |
+| · DeepSeek | DeepSeek Harness.app，装在“应用程序”里（[harness.deepseek.com](https://harness.deepseek.com)） |
+| · WorkBuddy | WorkBuddy.app，装在“应用程序”里 |
 
 检查环境（顺带显示 GPT 额度）：
 
@@ -73,20 +78,30 @@ node bin/wbloop.js run -d ~/projects/myproj --check "npm test" "实现……，�
 
 ## 登录
 
-- **GPT**：沿用 Codex CLI 的登录（`codex login`）。左下角 GPT 一栏显示剩余额度（例如“5h 94% · 周 87%”）即为已登录。
-- **WorkBuddy**：点左下角的 WorkBuddy，或执行 `node bin/wbloop.js login`。程序会在浏览器打开 WorkBuddy 官方登录页（www.workbuddy.cn），选账号登录即可。
-  - 这是本程序**单独的一份登录**，凭据保存在 `~/Library/Application Support/CodeBuddyExtension/Data/Public/auth/wbloop-cli.info`，**不会影响 WorkBuddy 桌面版**的登录状态（桌面版的凭据是加密存储的另一份文件）。积分从同一个账号扣。
-  - 有效期约 30 天，期间会自动续期；过期了任务会暂停并提示重新登录，登录后点“继续”即可。
+**设置 → 账户**（或点左下角的引擎）列出四个引擎。点**登录**会在浏览器打开该引擎自己的登录页，登录完成后这一行变绿。终端里用 `wbloop login <gpt|claude|deepseek|workbuddy>` 也一样。
+
+每份登录只属于本应用，引擎自己的 App 照旧用它们自己的：
+
+| 引擎 | 怎么登录 | 登录存在哪 |
+|---|---|---|
+| GPT | `codex login`（ChatGPT） | codex 目录（`~/.codex`，或 高级 → Codex home） |
+| Claude | `claude auth login`（Claude 订阅）；如果页面最后给出一段授权码，粘贴到这一行即可 | `~/.wbloop/claude-home`（目录填 `~/.claude` 则共用你平时 Claude Code 的登录） |
+| DeepSeek | DeepSeek 自己的浏览器登录（platform.deepseek.com），或 **改用 API key** | `~/.wbloop/dsh-home`（与桌面版的 `~/.dsh` 分开）；key 存在 `~/.wbloop/keys.json`（权限 0600） |
+| WorkBuddy | 官方登录页（国内站或国际站） | `wbloop-cli.info`，与桌面版自己的（加密）登录并排，从不改动它 |
+
+任务中途登录过期时，任务会暂停并给出**账户**按钮；重新登录后点“继续”即可。
 
 ## 使用
 
-左边是任务列表（进行中的在上面），右边是对话。**你和 GPT 的消息在右侧，WorkBuddy 的在左侧**：你提出目标 → GPT 制定计划并把指令交给 WorkBuddy → WorkBuddy 干活并汇报 → GPT 审计、给出下一步……每个角色有自己的徽记：雅典娜的猫头鹰是 GPT，赫菲斯托斯的锤子是 WorkBuddy，新月是你，忒弥斯的天平是独立验收员。
+左边是任务列表（置顶的在最上，其次是进行中的），右边是对话。**你和审计方的消息在右侧，执行方的在左侧**：你提出目标 → 审计方制定计划并交出指令 → 执行方干活并汇报 → 审计方检查、给出下一步……每个角色有自己的徽记：雅典娜的猫头鹰是审计方，赫菲斯托斯的锤子是执行方，新月是你，忒弥斯的天平是独立验收员。
+
+在左侧任务上点右键：**置顶**、**重命名**、**在访达中打开**、**导出**、暂停 / 停止 / 继续、**删除**。
 
 ### 新建任务
 
 1. 在首页输入框里写清楚**目标、技术约束、验收标准**。`@` 引用工作目录里的文件，`#` 点名一个子代理，`/` 打开命令。输入框底部：
    - **工作目录**（文件夹按钮）：选一个专门的项目文件夹（最好是 git 仓库）。点开会列出最近用过的目录，“选择其他目录…”打开文件夹选择器。
-   - **模型与参数**（右侧的模型名）：GPT 和 WorkBuddy 各自的模型与思考强度、WorkBuddy 的上下文窗口、GPT 联网搜索、给 WorkBuddy 的额外目录、团队模式与人数、任务模式、回复语言、最多轮数、token 预算、**验收命令**、决策方式、独立验收、敏感命令策略。
+   - **模型与参数**（右侧的模型名）：审计和执行各自的**引擎**（GPT、Claude、DeepSeek、WorkBuddy）、模型与思考强度，WorkBuddy 的上下文窗口、GPT 联网搜索、给执行方的额外目录、团队模式与人数、任务模式、回复语言、最多轮数、token 预算、**验收命令**、决策方式、独立验收、敏感命令策略。
    - **+**：模板和三个选项。改过的选项会以小标签显示在按钮上方：点标签可以再改，点 × 恢复默认。
      - **团队模式**：单人、自动（GPT 可以把一轮拆给几个队友）、总是。
      - **任务模式**：普通、**先出计划**（你批准 GPT 的计划之前不会改任何文件）、**漏洞排查**（审查你自己的代码：每个发现都用最小的复现来验证，并附修复建议）。
@@ -162,7 +177,7 @@ node bin/wbloop.js run -d ~/projects/myproj --check "npm test" "实现……，�
 
 ## 设置
 
-共十页：**通用**（语言、主题、执行过程详略）、**默认参数**（新任务的参数、保存的配置方案）、**提示词**（每个角色用内置还是自定义、给 GPT 和 WorkBuddy 的长期要求、ROLE.md）、**子代理**、**安全**（策略、等待时间、规则）、**钩子**、**技能与命令**、**MCP**、**长时间运行**（单次步数、自动续跑、无输出超时、限流等待、验收命令超时、自动压缩）、**系统与数据**（通知、防止休眠、笔记本、清理、用量、定时循环、设置的导入导出）。
+共十一页：**通用**（语言、主题、执行过程详略）、**账户**（每个引擎的登录）、**默认参数**（新任务的参数、保存的配置方案）、**提示词**（每个角色用内置还是自定义、给 GPT 和 WorkBuddy 的长期要求、ROLE.md）、**子代理**、**安全**（策略、等待时间、规则）、**钩子**、**技能与命令**、**MCP**、**长时间运行**（单次步数、自动续跑、无输出超时、限流等待、验收命令超时、自动压缩）、**系统与数据**（通知、防止休眠、笔记本、清理、用量、定时循环、设置的导入导出）。
 
 ## 命令行
 
@@ -171,6 +186,8 @@ node bin/wbloop.js templates                  # 列出模板
 node bin/wbloop.js templates bugfix > goal.md # 导出后编辑【】里的内容
 node bin/wbloop.js run -d ~/projects/myproj --goal-file goal.md --team auto --check "npm test" --start-at 23:00
 node bin/wbloop.js run -d . --mode plan "……"  # 然后：wbloop approve-plan last
+node bin/wbloop.js run -d . --lead claude --lead-model opus --exec deepseek "……"
+node bin/wbloop.js login claude               # 或 gpt、deepseek、workbuddy；退出用 logout <引擎>
 node bin/wbloop.js allow last --always        # 回复敏感命令请求（或：deny last --reason "……"）
 node bin/wbloop.js loop add "每天 09:30 检查日志并修复新出现的错误"
 node bin/wbloop.js quota | usage 7d | agents | prompt executor
@@ -191,7 +208,8 @@ node bin/wbloop.js quota | usage 7d | agents | prompt executor
 
 - **WorkBuddy 在工作目录里拥有完整的读写和执行权限**（默认“跳过确认”模式，敏感命令按上面的策略处理）。请选择专门的项目目录；程序拒绝把根目录或整个用户目录作为工作目录，同一目录同时只允许一个未结束的任务。
 - WorkBuddy 只开放编码相关的工具（文件、命令、子代理、任务清单、联网、技能、MCP 资源）；关掉了无人值守时会卡住或出错的（向用户提问、计划模式、它自己的团队/频道功能、远程 A2A），以及耗积分的图片/视频生成。需要全部工具时：`wbloop config workbuddy.tools=all`。
-- **GPT 不能修改你的项目**：它在 Codex 沙箱里运行，项目目录只读，只有它自己的草稿目录和系统临时目录可写（用来跑会写临时文件的测试）。项目放在 /tmp 下时自动改为完全只读。随口问问和代码审查也是只读的。
+- **审计方不能修改你的项目**：GPT 在 Codex 沙箱里运行，项目只读（只有它的草稿目录和临时目录可写，用来跑测试）；Claude 从草稿目录运行，Claude Code 的沙箱把命令的写入限制在那里，也拿不到写文件的工具；DeepSeek 在 DeepSeek Harness 的只读沙箱里运行；WorkBuddy 当审计时只有只读工具，会写文件的命令会被拦下。随口问问和代码审查也是只读的。
+- **执行方**：WorkBuddy 和 Claude 在工作目录里有完整权限，敏感命令按上面的策略处理；GPT 和 DeepSeek 没有工具钩子，策略没法在那里问你，改由各自的沙箱（workspace-write）把写入限制在工作目录和额外目录之内。
 - 验收命令、钩子和自定义命令都是你自己写的，程序原样运行（`zsh -c`），请只用你信任的命令。
 - 每轮改动用放在 `~/.wbloop/runs/<ID>/shadow.git` 的独立 git 仓库记录，**不会碰你项目自己的 .git**；回滚也只用这份影子仓库。
 - 本地服务只监听 127.0.0.1，接口需要随机令牌，并校验 Host 头。
@@ -209,6 +227,8 @@ node bin/wbloop.js quota | usage 7d | agents | prompt executor
 | `~/.wbloop/usage/` | 每天的 token 用量 |
 | `~/.wbloop/templates.json`、`ui-state.json` | 你的模板；界面的小偏好 |
 | `~/.wbloop/workbuddy-home/` | WorkBuddy 内核给本程序用的配置与会话记录（与桌面版的 `~/.workbuddy` 隔离） |
+| `~/.wbloop/claude-home/`、`dsh-home/`、`keys.json` | 本程序自己的 Claude Code 与 DeepSeek Harness 目录（登录与会话）；DeepSeek 的 API key |
+| `~/.wbloop/runs/<ID>/meta.json` | 任务的名字和置顶（来自右键菜单） |
 | `~/.wbloop/logs/app-server.log` | App 启动的本地服务日志 |
 
 彻底清理：删除 `~/.wbloop` 和上面的 `wbloop-cli.info`。只想清理旧任务：设置 → 系统与数据 → 清理。

@@ -4,23 +4,25 @@
 
 > You take a nap; it keeps watch over the dream.
 
-A local two-agent loop for macOS (desktop app, browser UI and command line):
+A local two-agent loop for macOS (desktop app, browser UI and command line). Two roles, and you choose who plays each:
 
-- **GPT — lead and auditor.** Runs through the official Codex CLI on your **ChatGPT subscription**. It researches, writes the plan, gives WorkBuddy one instruction per round, and after every round reads the diff, opens files, runs the tests and decides what happens next.
-- **WorkBuddy — executor.** Runs the core that ships inside WorkBuddy.app (the CodeBuddy Code CLI) headless, on your **WorkBuddy account**. It reads and writes the files and runs the commands — alone, or as a **team** of parallel teammates.
+- **The lead — plans and audits.** It researches, writes the plan, gives the executor one instruction per round, and after every round reads the diff, opens files, runs the tests and decides what happens next. It never changes your project.
+- **The executor — does the work.** It reads and writes the files and runs the commands — alone, or as a **team** of parallel teammates.
 
-The loop goes on until GPT decides the goal is met. Then, by default, a fresh GPT session that knows nothing of the history checks the result independently. WorkBuddy's short runs (step limits, stops halfway) are handled by automatic continuation and by GPT's round-by-round instructions.
+Either role can be **GPT** (Codex CLI, ChatGPT subscription), **Claude** (Claude Code, Claude subscription), **DeepSeek** (DeepSeek Harness, DeepSeek account or API key) or **WorkBuddy** (the core inside WorkBuddy.app, WorkBuddy account). The default is GPT leading and WorkBuddy executing. Each engine signs in once under **Settings → Accounts**, separately from its own app.
+
+The loop goes on until the lead decides the goal is met. Then, by default, a fresh session that knows nothing of the history checks the result independently. Short executor runs (step limits, stops halfway) are handled by automatic continuation and by the round-by-round instructions.
 
 ```
-your goal ─▶ GPT plans ─▶ ┌─────────────────────────────────────────────────────────────┐
-  (Plan-first mode:       │ round N: WorkBuddy carries out the instruction               │
+your goal ─▶ lead plans ─▶┌─────────────────────────────────────────────────────────────┐
+  (Plan-first mode:       │ round N: the executor carries out the instruction            │
    you approve the plan)  │          (or 2–3 teammates in parallel, merged with git)     │
                           │      ↓ shadow-git snapshot · your check command runs         │
-                          │ GPT audits: diff, files, tests → next instruction            │
+                          │ the lead audits: diff, files, tests → next instruction       │
                           └──────────────────────── continue ◀───────────────────────────┘
                                                    │ done
                                                    ▼
-                                  a fresh GPT session reviews ─▶ finished (or keeps fixing)
+                                  a fresh lead session reviews ─▶ finished (or keeps fixing)
 ```
 
 ### The name
@@ -34,8 +36,11 @@ The lines of poetry on the home page are about sleep and dozing — Meng Haoran,
 | Needed | Notes |
 |---|---|
 | macOS + Node.js ≥ 20 | e.g. `brew install node` or nvm |
-| Codex CLI | `npm i -g @openai/codex`, then `codex login` and choose ChatGPT |
-| WorkBuddy.app | installed in /Applications; sign-in is described below |
+| The engines you use | any of the four; the defaults need the first and the last |
+| · GPT | Codex CLI: `npm i -g @openai/codex` |
+| · Claude | Claude Code: `npm i -g @anthropic-ai/claude-code` |
+| · DeepSeek | DeepSeek Harness.app in /Applications ([harness.deepseek.com](https://harness.deepseek.com)) |
+| · WorkBuddy | WorkBuddy.app in /Applications |
 
 Check everything (also shows the GPT quota):
 
@@ -73,20 +78,30 @@ The interface is in **English** by default. **Settings → General → Language*
 
 ## Signing in
 
-- **GPT** uses the Codex CLI login (`codex login`). When the GPT entry at the bottom left shows the remaining quota (e.g. "5h 94% · week 87%"), you are signed in.
-- **WorkBuddy**: click WorkBuddy at the bottom left, or run `node bin/wbloop.js login`. The official sign-in page (www.workbuddy.cn) opens in the browser; pick your account.
-  - This is the program's **own sign-in**, stored in `~/Library/Application Support/CodeBuddyExtension/Data/Public/auth/wbloop-cli.info`. It **does not touch the WorkBuddy desktop app's** sign-in (whose credentials are encrypted in another file). Credits come from the same account.
-  - It lasts about 30 days and renews itself; when it expires, the task pauses and asks you to sign in again, then you click Continue.
+**Settings → Accounts** (or click an engine at the bottom left) lists the four engines. **Sign in** opens the engine's own sign-in page in your browser; when you finish there, the row turns green. `wbloop login <gpt|claude|deepseek|workbuddy>` does the same from the terminal.
+
+Every sign-in belongs to this app only — the engines' own apps keep theirs:
+
+| Engine | How it signs in | Where the login lives |
+|---|---|---|
+| GPT | `codex login` (ChatGPT) | the codex home (`~/.codex`, or Advanced → Codex home) |
+| Claude | `claude auth login` (Claude subscription); if the page shows a code instead of finishing, paste it into the row | `~/.wbloop/claude-home` (set the folder to `~/.claude` to share your usual Claude Code login) |
+| DeepSeek | DeepSeek's own browser sign-in (platform.deepseek.com), or **Use an API key instead** | `~/.wbloop/dsh-home` (separate from the desktop app's `~/.dsh`); a key in `~/.wbloop/keys.json` (0600) |
+| WorkBuddy | the official page (China or international site) | `wbloop-cli.info` next to the desktop app's own (encrypted) login, which is never touched |
+
+When a login expires mid-task the task pauses with an **Accounts** button; sign in again and click Continue.
 
 ## Using it
 
-Tasks are on the left (running ones first), the conversation on the right. **Your messages and GPT's are on the right, WorkBuddy's on the left**: you state a goal → GPT plans and hands WorkBuddy an instruction → WorkBuddy works and reports → GPT audits and gives the next step… Each role has an emblem: Athena's owl is GPT, Hephaestus's hammer is WorkBuddy, the crescent is you, Themis's scales are the independent reviewer.
+Tasks are on the left (pinned ones first, then running ones), the conversation on the right. **Your messages and the lead's are on the right, the executor's on the left**: you state a goal → the lead plans and hands over an instruction → the executor works and reports → the lead audits and gives the next step… Each role has an emblem: Athena's owl is the lead, Hephaestus's hammer is the executor, the crescent is you, Themis's scales are the independent reviewer.
+
+Right-click a task in the sidebar for **Pin**, **Rename**, **Open in Finder**, **Export**, Pause / Stop / Continue and **Delete**.
 
 ### A new task
 
 1. Write the **goal, constraints and acceptance criteria** in the box on the home page. `@` mentions a file in the working directory, `#` asks for a sub-agent, `/` opens the commands. Along the bottom of the box:
    - **Working directory** (the folder button) — a dedicated project folder, ideally a git repository. It lists your recent folders; "Choose another folder…" opens the folder picker.
-   - **Models & parameters** (the model names on the right) — GPT and WorkBuddy models and reasoning effort, WorkBuddy's context window, GPT web search, extra folders for WorkBuddy, Team Mode and its size, task mode, reply language, maximum rounds, token budget, **check command**, autonomy, independent review and the sensitive-command policy.
+   - **Models & parameters** (the model names on the right) — for the lead and for the executor: the **engine** (GPT, Claude, DeepSeek, WorkBuddy), model and reasoning effort; WorkBuddy's context window, GPT web search, extra folders for the executor, Team Mode and its size, task mode, reply language, maximum rounds, token budget, **check command**, autonomy, independent review and the sensitive-command policy.
    - **+** — templates and three options. An option changed from its default shows as a chip above the buttons: click the chip to change it, or its × to go back to the default.
      - **Team Mode** — Solo, Auto (GPT may split a round among teammates) or Always.
      - **Task mode** — Normal, **Plan first** (nothing changes until you approve GPT's plan) or **Vulnerability hunting** (a security review of code you own: each finding verified with a minimal proof and reported with a fix).
@@ -162,7 +177,7 @@ On the home page: `/dir` `/params` `/template` `/team` `/mode` `/init` `/deepres
 
 ## Settings
 
-Ten pages: **General** (language, theme, process detail), **Defaults** (parameters for new tasks, saved profiles), **Prompts** (each role built-in or custom, standing rules for GPT and for WorkBuddy, ROLE.md), **Sub-agents**, **Safety** (policy, timeout, rules), **Hooks**, **Skills & commands**, **MCP**, **Long runs** (steps per call, continuations, idle timeout, waiting on limits, check timeout, auto-compact) and **System & data** (notifications, sleep prevention, notebook, cleanup, usage, loops, export/import of settings).
+Eleven pages: **General** (language, theme, process detail), **Accounts** (sign-in for every engine), **Defaults** (parameters for new tasks, saved profiles), **Prompts** (each role built-in or custom, standing rules for GPT and for WorkBuddy, ROLE.md), **Sub-agents**, **Safety** (policy, timeout, rules), **Hooks**, **Skills & commands**, **MCP**, **Long runs** (steps per call, continuations, idle timeout, waiting on limits, check timeout, auto-compact) and **System & data** (notifications, sleep prevention, notebook, cleanup, usage, loops, export/import of settings).
 
 ## Command line
 
@@ -171,6 +186,8 @@ node bin/wbloop.js templates                  # list templates
 node bin/wbloop.js templates bugfix > goal.md # edit the [[…]] parts
 node bin/wbloop.js run -d ~/projects/myproj --goal-file goal.md --team auto --check "npm test" --start-at 23:00
 node bin/wbloop.js run -d . --mode plan "…"   # then: wbloop approve-plan last
+node bin/wbloop.js run -d . --lead claude --lead-model opus --exec deepseek "…"
+node bin/wbloop.js login claude               # or gpt, deepseek, workbuddy; logout <engine>
 node bin/wbloop.js allow last --always        # answer a sensitive-command request (or: deny last --reason "…")
 node bin/wbloop.js loop add "daily 09:30 check the logs and fix new errors"
 node bin/wbloop.js quota | usage 7d | agents | prompt executor
@@ -191,7 +208,8 @@ Also: `wbloop list / show / tail / msg / pause / stop / resume / compact / expor
 
 - **WorkBuddy has full read, write and execute rights in the working directory** ("bypass permissions" by default; sensitive commands go through the policy above). Use a dedicated project folder; the root folder and your whole home folder are refused, and one folder can have only one unfinished task.
 - WorkBuddy only gets its coding tools (files, commands, sub-agents, task list, web, skills, MCP resources); tools that would hang or fail without a user (asking questions, plan mode, its own team/channel features, remote A2A) and the credit-hungry image/video generation are off. `wbloop config workbuddy.tools=all` turns everything on.
-- **GPT cannot change your project**: it runs in the Codex sandbox with the project read-only; only its own scratch folder and the system temp folder are writable (for tests that write temp files). A project under /tmp makes it fully read-only. Side questions and reviews are read-only too.
+- **The lead cannot change your project.** GPT runs in the Codex sandbox with the project read-only (its own scratch folder and the temp folder are writable, for tests). Claude runs from a scratch folder with Claude Code's sandbox keeping shell writes there, and without file-writing tools. DeepSeek runs in DeepSeek Harness's read-only sandbox. WorkBuddy as lead gets read-only tools, and a gate turns away shell commands that would write. Side questions and reviews are read-only too.
+- **Executors**: WorkBuddy and Claude run with full rights in the working directory, with sensitive commands going through the policy above. GPT and DeepSeek have no tool hooks, so the policy can't ask you there; instead they run in their sandbox (workspace-write): writes stay inside the working directory and the extra folders.
 - The check command, hooks and custom commands are yours and run as written (`zsh -c`) — only use commands you trust.
 - Each round's changes are recorded in a separate git repository in `~/.wbloop/runs/<ID>/shadow.git`; **your project's own .git is never touched**, and rollbacks use only that shadow repository.
 - The local service listens on 127.0.0.1 only, needs a random token and checks the Host header.
@@ -209,6 +227,8 @@ Also: `wbloop list / show / tail / msg / pause / stop / resume / compact / expor
 | `~/.wbloop/usage/` | Token usage per day |
 | `~/.wbloop/templates.json`, `ui-state.json` | Your templates; small interface preferences |
 | `~/.wbloop/workbuddy-home/` | Config and sessions of the WorkBuddy core for this program (separate from the desktop app's `~/.workbuddy`) |
+| `~/.wbloop/claude-home/`, `dsh-home/`, `keys.json` | Claude Code and DeepSeek Harness homes of this program (their logins and sessions); a DeepSeek API key |
+| `~/.wbloop/runs/<ID>/meta.json` | A task's name and pin (from the sidebar menu) |
 | `~/.wbloop/logs/app-server.log` | Log of the service started by the app |
 
 To remove everything: delete `~/.wbloop` and the `wbloop-cli.info` above. To clean up old tasks only: Settings → System & data → Clean up.
@@ -226,6 +246,8 @@ To remove everything: delete `~/.wbloop` and the `wbloop-cli.info` above. To cle
 
 ```
 bin/wbloop.js      command line
+src/engines/       one adapter per engine (chatgpt, claude, deepseek, wb): find, sign in/out, models, a lead turn, an
+                   executor call; streamjson.js is the shared Claude Code / CodeBuddy stream parser
 src/loop.js        orchestrator: plan → (approve) → work (single or team) → audit → (review) → finish; retries, continuation,
                    interrupts, check command, schedule, wrap-up at limits, budget, hooks, recovery
 src/sysprompts.js  system prompts of every role, overrides, ROLE.md;  src/prompts.js  the per-turn prompts
