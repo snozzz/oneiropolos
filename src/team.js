@@ -23,6 +23,14 @@ export async function prepareWorkspace({ runId, round, slug, workdir, signal }) 
   fs.mkdirSync(ws, { recursive: true });
   const entries = fs.readdirSync(workdir).filter((e) => e !== '.git' && e !== '.DS_Store');
   const errors = [];
+  if (process.platform !== 'darwin') {
+    for (const entry of entries) {
+      if (signal?.aborted) throw new Error('aborted');
+      await fs.promises.cp(path.join(workdir, entry), path.join(ws, entry), { recursive: true, dereference: false });
+    }
+    fs.writeFileSync(path.join(ws, '.wbloop-ready'), nowIso());
+    return { dir: ws, reused: false, warning: null };
+  }
   // clone in batches so the argument list stays short
   for (let i = 0; i < entries.length; i += 200) {
     const batch = entries.slice(i, i + 200).map((e) => path.join(workdir, e));

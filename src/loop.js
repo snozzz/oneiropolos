@@ -19,7 +19,7 @@ import { appendEvent, isRunnerProcess, livePath, readControl, readState, roundDi
 import { SleepGuard, notify } from './system.js';
 import { applyTree, initBoard, mergeCommits, prepareWorkspace, removeWorkspace, rosterText, snapshotWorkspace, teamRoundDir } from './team.js';
 import { recordUsage } from './usage.js';
-import { baseChildEnv, extractJsonObject, isTempPath, nowIso, oneLine, readJson, runProcess, sleep, truncate, truncateMiddle, uuid, writeJsonAtomic } from './util.js';
+import { SHELL, shellArgs, baseChildEnv, extractJsonObject, isTempPath, nowIso, oneLine, readJson, runProcess, sleep, truncate, truncateMiddle, uuid, writeJsonAtomic } from './util.js';
 import { wbAuthState } from './workbuddy.js';
 
 class StopSignal extends Error {
@@ -48,7 +48,7 @@ const TRANSIENT_WAITS_SEC = [15, 60, 180, 600].map((x) => x * WAIT_SCALE);
 const LOST_THREAD_RE = /no (rollout|session|conversation|thread)[^\n]{0,40}found|(thread|session|rollout)[^\n]{0,40}not found|failed to (resume|load)/i;
 const LOST_WB_SESSION_RE = /(session|conversation)[^\n]{0,40}(not found|does not exist|不存在)|No conversation found/i;
 const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep', 'TaskList', 'TaskGet', 'ToolSearch', 'NotebookRead', 'WebSearch', 'WebFetch']);
-const CHECK_SHELL = fs.existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/sh';
+
 const GATE = path.join(ROOT, 'src', 'hook-gate.js');
 
 function anySignal(signals) {
@@ -61,7 +61,7 @@ function anySignal(signals) {
   return ctrl.signal;
 }
 
-const sh = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+const sh = (s) => process.platform === 'win32' ? `"${String(s).replaceAll('\\', '/').replaceAll('"', '')}"` : `'${String(s).replace(/'/g, "'\\''")}'`;
 
 export class Orchestrator {
   constructor(runId, { onEvent } = {}) {
@@ -853,7 +853,7 @@ export class Orchestrator {
     this.emit('check.start', { round, scope, command });
     const started = Date.now();
     let output = '';
-    const res = await runProcess(CHECK_SHELL, ['-c', `{ ${command}\n} 2>&1`], {
+    const res = await runProcess(SHELL, shellArgs(command, true), {
       cwd: this.state.workdir,
       env: await baseChildEnv(),
       signal: this.abort.signal,

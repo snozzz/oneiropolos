@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { RUNS_DIR, ensureDirs } from './paths.js';
 import { t } from './i18n.js';
-import { isPidAlive, newRunId, nowIso, readJson, writeJsonAtomic } from './util.js';
+import { processCommandLine, isPidAlive, newRunId, nowIso, readJson, writeJsonAtomic } from './util.js';
 
 const RUN_ID_RE = /^\d{8}-\d{6}-[0-9a-f]{4}$/;
 export const ACTIVE_STATUSES = new Set(['queued', 'running', 'paused', 'waiting_user', 'waiting']);
@@ -92,7 +92,7 @@ export function isRunnerProcess(pid) {
   if (hit && Date.now() - hit.at < 3000) return hit.value;
   let value = false;
   try {
-    const cmd = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' });
+    const cmd = processCommandLine(pid);
     value = /runner\.js|wbloop/.test(cmd);
   } catch {
     value = false;

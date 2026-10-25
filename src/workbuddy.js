@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { WB_AUTH_FILE, WB_AUTH_ID, WB_HOME, WB_PRODUCT_PATH, ensureDirs } from './paths.js';
 import { t } from './i18n.js';
-import { baseChildEnv, oneLine, readJson, sleep, writeJsonAtomic } from './util.js';
+import { windowsAppDirs, killProcessTree, processCommandLine, baseChildEnv, oneLine, readJson, sleep, writeJsonAtomic } from './util.js';
 import { runStreamJson, summarizeToolInput, toolInputDetail } from './engines/streamjson.js';
 
 export { summarizeToolInput, toolInputDetail };
@@ -30,9 +30,12 @@ export const WB_DISALLOWED_TOOLS = [
 
 export function findWorkBuddy(appPath = '') {
   const candidates = [appPath, '/Applications/WorkBuddy.app', path.join(os.homedir(), 'Applications/WorkBuddy.app')].filter(Boolean);
+  if (process.platform === 'win32') candidates.push(...windowsAppDirs('WorkBuddy'));
+  if (process.platform === 'win32') candidates.push(...[process.env.LOCALAPPDATA, process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean).flatMap((base) => [path.join(base, 'WorkBuddy'), path.join(base, 'Programs/WorkBuddy')]));
   for (const app of candidates) {
-    const electron = path.join(app, 'Contents/MacOS/Electron');
-    const cliDir = path.join(app, CLI_REL);
+    const windows = fs.existsSync(path.join(app, 'WorkBuddy.exe'));
+    const electron = path.join(app, windows ? 'WorkBuddy.exe' : 'Contents/MacOS/Electron');
+    const cliDir = path.join(app, windows ? 'resources/app.asar.unpacked/cli' : CLI_REL);
     const cli = path.join(cliDir, 'bin/codebuddy');
     const product = path.join(cliDir, 'product.json');
     if (fs.existsSync(electron) && fs.existsSync(cli) && fs.existsSync(product)) {
@@ -314,7 +317,7 @@ export function refreshWbCloudConfig(found, { timeoutMs = 25_000 } = {}) {
       env,
       cwd: WB_HOME,
       stdio: 'ignore',
-      detached: true,
+      detached: true, windowsHide: true,
     });
     child.on('error', () => {});
     try {
@@ -327,7 +330,7 @@ export function refreshWbCloudConfig(found, { timeoutMs = 25_000 } = {}) {
       return wbCloudConfig();
     } finally {
       try {
-        process.kill(-child.pid, 'SIGTERM');
+        killProcessTree(child.pid);
       } catch {
         // gone
       }
@@ -419,7 +422,7 @@ async function withServe(found, fn, { signal } = {}) {
     env,
     cwd: WB_HOME,
     stdio: ['ignore', 'ignore', 'pipe'],
-    detached: true,
+    detached: true, windowsHide: true,
   });
   let stderr = '';
   child.stderr.on('data', (d) => {
@@ -427,7 +430,7 @@ async function withServe(found, fn, { signal } = {}) {
   });
   const stop = () => {
     try {
-      process.kill(-child.pid, 'SIGTERM');
+      killProcessTree(child.pid);
     } catch {
       // gone
     }
@@ -471,7 +474,10 @@ async function withServe(found, fn, { signal } = {}) {
 export function openUrl(url) {
   // WBLOOP_NO_OPEN=1 (tests, headless checks): never pop a browser or Finder window
   if (process.env.WBLOOP_NO_OPEN) return;
-  spawn('/usr/bin/open', [url], { stdio: 'ignore', detached: true }).unref();
+  const command = process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? '/usr/bin/open' : 'xdg-open';
+  const child = spawn(command, [url], { stdio: 'ignore', detached: true, windowsHide: true });
+  child.on('error', () => {});
+  child.unref();
 }
 
 /**

@@ -36,6 +36,7 @@ function platformName() {
 }
 
 function shellName() {
+  if (os.platform() === 'win32') return 'cmd.exe (check commands and hooks); PowerShell available explicitly';
   const s = path.basename(process.env.SHELL || '/bin/zsh');
   return s || 'zsh';
 }

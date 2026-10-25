@@ -1,3 +1,5 @@
+import { shellJs } from './fakes.js';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -13,7 +15,7 @@ fs.mkdirSync(work, { recursive: true });
 const { createRun, readEvents } = await import('../src/store.js');
 const { decideApproval, pendingApprovals, gateLog } = await import('../src/safety.js');
 const { writeHookType } = await import('../src/hooks.js');
-const GATE = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'src', 'hook-gate.js');
+const GATE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'hook-gate.js');
 
 test.after(() => fs.rmSync(base, { recursive: true, force: true }));
 
@@ -83,7 +85,7 @@ test('safety gate: deny and allow (YOLO) policies, the user\'s tool hooks, toolC
   const yolo = createRun({ goal: 'g', workdir: work, settings: { safety: { policy: 'allow' } } });
   assert.equal((await gate(yolo.id, bash('rm -rf /tmp/x'))).code, 0);
 
-  writeHookType('beforeToolCall', [{ description: 'no writes to secrets', matcher: 'filesystem-create,filesystem-edit', hooks: [{ type: 'command', command: 'grep -q secret && { echo "secrets are off limits" >&2; exit 1; }; exit 0' }] }]);
+  writeHookType('beforeToolCall', [{ description: 'no writes to secrets', matcher: 'filesystem-create,filesystem-edit', hooks: [{ type: 'command', command: shellJs("let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{if(s.includes('secret')){process.stderr.write('secrets are off limits');process.exit(1)}})") }] }]);
   const blocked = await gate(yolo.id, { tool_name: 'Write', tool_input: { file_path: '/w/secret.txt' } });
   assert.equal(blocked.code, 2);
   assert.equal(blocked.stderr, 'secrets are off limits');
@@ -98,7 +100,7 @@ test('safety gate: deny and allow (YOLO) policies, the user\'s tool hooks, toolC
   assert.match(rej.stderr, /not this one/);
   writeHookType('toolConfirmation', []);
 
-  writeHookType('afterToolCall', [{ description: 'lint', matcher: 'Edit', hooks: [{ type: 'command', command: 'echo "lint: 2 problems" >&2; exit 1' }] }]);
+  writeHookType('afterToolCall', [{ description: 'lint', matcher: 'Edit', hooks: [{ type: 'command', command: shellJs("process.stderr.write('lint: 2 problems');process.exit(1)") }] }]);
   const post = await gate(yolo.id, { tool_name: 'Edit', tool_input: { file_path: '/w/a.js' }, tool_response: 'ok' }, 'post');
   assert.equal(post.code, 2);
   assert.equal(post.stderr, 'lint: 2 problems', 'afterToolCall output replaces what the model sees');

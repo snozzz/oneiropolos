@@ -10,7 +10,7 @@ import { leadError, leadEventMapper, leadText, leadUsage } from './streamjson.js
 export const meta = { id: 'workbuddy', name: 'WorkBuddy', vendor: 'WorkBuddy', section: 'workbuddy', gate: true, agents: true, schema: true };
 
 const LEAD_TOOLS = 'Read,Glob,Grep,Bash,WebFetch,WebSearch,ToolSearch,StructuredOutput';
-const sh = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+const sh = (s) => process.platform === 'win32' ? `"${String(s).replaceAll('\\', '/').replaceAll('"', '')}"` : `'${String(s).replace(/'/g, "'\\''")}'`;
 
 export function find(cfg) {
   return findWorkBuddy(cfg?.workbuddy?.appPath);
@@ -64,7 +64,7 @@ export async function lead(o) {
     effort: o.effort,
     contextWindow: Number(o.cfg?.workbuddy?.contextWindow) || 0,
     maxTurns: 120,
-    tools: LEAD_TOOLS,
+    tools: process.platform === 'win32' ? LEAD_TOOLS.replace(',Bash', '') : LEAD_TOOLS,
     hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: gate, timeout: 30 }] }] },
     systemPromptFile: o.systemFile,
     mcpConfig: o.mcpConfig,

@@ -39,7 +39,7 @@ export class Snapshotter {
   constructor(runDir, workdir) {
     this.gitDir = path.join(runDir, 'shadow.git');
     this.workdir = workdir;
-    this.git = findExecutable('git', ['/usr/bin']) || '/usr/bin/git';
+    this.git = findExecutable('git', ['/usr/bin']) || 'git';
     this.disabledReason = null;
   }
 

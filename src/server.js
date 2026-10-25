@@ -320,7 +320,11 @@ async function route(req, res, url) {
   if (pathname === '/api/reveal' && method === 'POST') {
     const target = String((await readBody(req)).path || '');
     if (!target || !fs.existsSync(target)) return sendJson(res, 400, { error: t('srv.fileMissing') });
-    spawn('/usr/bin/open', ['-R', target], { stdio: 'ignore', detached: true }).unref();
+    if (process.platform === 'darwin') {
+      const child = spawn('/usr/bin/open', ['-R', target], { stdio: 'ignore', detached: true });
+      child.on('error', () => {});
+      child.unref();
+    } else openUrl(fs.statSync(target).isDirectory() ? target : path.dirname(target));
     return sendJson(res, 200, { ok: true });
   }
   if (pathname === '/api/open' && method === 'POST') {

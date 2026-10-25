@@ -1,3 +1,5 @@
+import { shellJs } from './fakes.js';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -64,12 +66,12 @@ test('hooks: matchers (incl. snow-cli tool names), exit codes, additionalContext
   assert.match(r.additionalContext, /STATIC CONTEXT/);
   assert.match(r.additionalContext, /seen:hello/);
   // exit 1 replaces, exit 2 blocks
-  H.writeHookType('afterToolCall', [rule([{ type: 'command', command: 'echo replaced >&2; exit 1' }], { matcher: 'Bash' })]);
+  H.writeHookType('afterToolCall', [rule([{ type: 'command', command: shellJs("process.stderr.write('replaced');process.exit(1)") }], { matcher: 'Bash' })]);
   r = await H.runHooks('afterToolCall', { toolName: 'Bash' }, { workdir: work, toolName: 'Bash' });
   assert.equal(r.replaced, 'replaced');
   r = await H.runHooks('afterToolCall', { toolName: 'Edit' }, { workdir: work, toolName: 'Edit' });
   assert.equal(r.ran, 0, 'the matcher filters other tools');
-  H.writeHookType('beforeToolCall', [rule([{ type: 'command', command: 'echo nope >&2; exit 2' }])]);
+  H.writeHookType('beforeToolCall', [rule([{ type: 'command', command: shellJs("process.stderr.write('nope');process.exit(2)") }])]);
   r = await H.runHooks('beforeToolCall', {}, { workdir: work, toolName: 'Write' });
   assert.deepEqual(r.blocked, { code: 2, message: 'nope' });
   // toolConfirmation keywords
@@ -80,7 +82,7 @@ test('hooks: matchers (incl. snow-cli tool names), exit codes, additionalContext
   H.writeHookType('onStop', [rule([{ type: 'prompt', prompt: 'Anything else? $STOPSESSION$' }])]);
   r = await H.runHooks('onStop', { status: 'done' }, { workdir: work });
   assert.match(r.prompt, /^Anything else\? \{"status":"done"\}/);
-  H.writeHookType('onSessionStart', [rule([{ type: 'command', command: 'sleep 5', timeout: 600 }])]);
+  H.writeHookType('onSessionStart', [rule([{ type: 'command', command: shellJs('setTimeout(()=>{},5000)'), timeout: 600 }])]);
   r = await H.runHooks('onSessionStart', {}, { workdir: work });
   assert.equal(r.blocked, null, 'a timeout fails open');
   assert.equal(H.readHookDir().onStop.length, 1);
@@ -258,7 +260,7 @@ test('i18n: the three dictionaries have the same keys and every key used in the 
   const keys = (d) => Object.keys(d).sort();
   assert.deepEqual(keys(zh), keys(en), 'zh = en');
   assert.deepEqual(keys(ja), keys(en), 'ja = en');
-  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const files = [
     ...fs.readdirSync(path.join(root, 'src')).map((f) => path.join(root, 'src', f)),
     ...fs.readdirSync(path.join(root, 'public', 'js')).filter((f) => f.endsWith('.js')).map((f) => path.join(root, 'public', 'js', f)),

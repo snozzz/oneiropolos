@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -120,6 +120,7 @@ function compareVersionDirsDesc(a, b) {
 // When launched from Finder/Dock the PATH is short; add nvm, Homebrew and friends ourselves.
 export function candidateBinDirs() {
   const home = os.homedir();
+  if (process.platform === 'win32') return [path.dirname(process.execPath), path.join(process.env.APPDATA || home, 'npm'), path.join(home, '.local', 'bin'), path.join(home, '.bun', 'bin'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'cmd')];
   const dirs = [];
   const nvmBase = path.join(home, '.nvm/versions/node');
   try {
@@ -143,12 +144,26 @@ export function candidateBinDirs() {
 }
 
 export function findExecutable(name, preferredDirs = []) {
-  const dirs = [...preferredDirs, ...(process.env.PATH || '').split(':').filter(Boolean), ...candidateBinDirs()];
+  const dirs = [...preferredDirs, ...(process.env.PATH || '').split(path.delimiter).filter(Boolean), ...candidateBinDirs()];
   for (const dir of dirs) {
-    const file = path.join(dir, name);
-    if (isExecutable(file)) return file;
+    const names = process.platform === 'win32' && !path.extname(name) ? [`${name}.exe`, name, `${name}.cmd`, `${name}.bat`] : [name];
+    for (const n of names) {
+      const file = path.join(dir, n);
+      if (isExecutable(file)) return file;
+    }
   }
   return null;
+}
+
+let appDirsCache;
+export function windowsAppDirs(name) {
+  if (process.platform !== 'win32') return [];
+  if (!appDirsCache) {
+    const script = "Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'WorkBuddy|DeepSeek' } | Select-Object DisplayName,InstallLocation,DisplayIcon | ConvertTo-Json -Compress";
+    try { const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true, timeout: 10000 }); appDirsCache = [].concat(JSON.parse(r.stdout || '[]')); }
+    catch { appDirsCache = []; }
+  }
+  return appDirsCache.filter((a) => a.DisplayName?.startsWith(name)).flatMap((a) => [a.InstallLocation, a.DisplayIcon ? path.dirname(a.DisplayIcon.replace(/,\d+$/, '').replaceAll('"', '')) : null]).filter(Boolean);
 }
 
 export function mergePath(...dirLists) {
@@ -162,7 +177,50 @@ export function mergePath(...dirLists) {
       }
     }
   }
-  return out.join(':');
+  return out.join(path.delimiter);
+}
+
+export const SHELL = process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : (fs.existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/sh');
+export const shellArgs = (command, mergeError = false) => process.platform === 'win32'
+  ? ['/d', '/s', '/c', `"${command}${mergeError ? ' 2>&1' : ''}"`]
+  : ['-c', mergeError ? `{ ${command}\n} 2>&1` : command];
+
+export function processCommandLine(pid) {
+  if (process.platform !== 'win32') return spawnSync('/bin/ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).stdout || '';
+  if (!Number.isSafeInteger(Number(pid)) || Number(pid) <= 0) return '';
+  return spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${Number(pid)}').CommandLine`], { encoding: 'utf8', windowsHide: true }).stdout || '';
+}
+
+export function killProcessTree(pid, signal = 'SIGTERM') {
+  if (!pid) return;
+  try {
+    if (process.platform === 'win32') spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+    else process.kill(-pid, signal);
+  } catch { /* already gone */ }
+}
+
+// npm's Windows shims point to JavaScript entry files. Launch those with Node directly,
+// preserving argument boundaries without passing prompts or paths through cmd.exe.
+function windowsCommand(cmd, args) {
+  if (process.platform !== 'win32' || /\.exe$/i.test(cmd)) return { cmd, args };
+  let source = '';
+  try {
+    const fd = fs.openSync(cmd, 'r');
+    try { const buf = Buffer.alloc(16000); source = buf.subarray(0, fs.readSync(fd, buf)).toString('utf8'); }
+    finally { fs.closeSync(fd); }
+  } catch { return { cmd, args }; }
+  if (/\.(cmd|bat)$/i.test(cmd)) {
+    const target = source.match(/"%(?:dp0|~dp0)%?\\([^"\r\n]+\.(?:js|cjs|mjs))"/i)?.[1];
+    if (target) return { cmd: process.execPath, args: [path.resolve(path.dirname(cmd), target), ...args] };
+    throw new Error(`Unsupported batch launcher: ${cmd}. Configure the CLI's .exe or JavaScript entry instead.`);
+  }
+  if (/^#!.*\bnode\b/.test(source) || /\.(mjs|cjs|js)$/i.test(cmd)) return { cmd: process.execPath, args: [cmd, ...args] };
+  return { cmd, args };
+}
+
+export function spawnCommand(cmd, args, options = {}) {
+  const launch = windowsCommand(cmd, args);
+  return spawn(launch.cmd, launch.args, { windowsHide: true, ...options });
 }
 
 /**
@@ -175,7 +233,8 @@ export function runProcess(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(cmd, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+      const launch = windowsCommand(cmd, args);
+      child = spawn(launch.cmd, launch.args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true, windowsVerbatimArguments: process.platform === 'win32' && path.basename(launch.cmd).toLowerCase() === 'cmd.exe' });
     } catch (error) {
       resolve({ code: null, signal: null, error, stderr: '', timedOut: false, idleTimedOut: false, aborted: false });
       return;
@@ -190,6 +249,7 @@ export function runProcess(cmd, args, opts = {}) {
     const raw = rawFile ? fs.createWriteStream(rawFile, { flags: 'a' }) : null;
 
     const killGroup = (sig) => {
+      if (process.platform === 'win32') { if (child.exitCode === null) killProcessTree(child.pid, sig); return; }
       try {
         process.kill(-child.pid, sig);
       } catch {
@@ -312,6 +372,25 @@ let proxyCache = null;
 // settings (the same thing the WorkBuddy desktop app does).
 export async function systemProxyEnv() {
   if (proxyCache && Date.now() - proxyCache.at < 60_000) return proxyCache.env;
+  if (process.platform === 'win32') {
+    const env = {};
+    const key = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
+    const enabled = await execText('reg.exe', ['query', key, '/v', 'ProxyEnable'], { timeoutMs: 3000 });
+    if (/REG_DWORD\s+0x1\b/i.test(enabled.stdout)) {
+      const result = await execText('reg.exe', ['query', key, '/v', 'ProxyServer'], { timeoutMs: 3000 });
+      const server = /REG_SZ\s+(.+)/.exec(result.stdout)?.[1]?.trim();
+      if (server) {
+        const entries = Object.fromEntries(server.split(';').filter((s) => s.includes('=')).map((s) => s.split('=')));
+        const fallback = server.includes('=') ? '' : server;
+        const http = entries.http || entries.https || fallback;
+        const https = entries.https || entries.http || fallback;
+        if (http && https) Object.assign(env, { HTTP_PROXY: /^https?:\/\//i.test(http) ? http : `http://${http}`, HTTPS_PROXY: /^https?:\/\//i.test(https) ? https : `http://${https}`, NO_PROXY: 'localhost,127.0.0.1,::1' });
+      }
+    }
+    proxyCache = { at: Date.now(), env };
+    return env;
+  }
+  if (process.platform !== 'darwin') return {};
   const env = {};
   try {
     const { stdout } = await execText('/usr/sbin/scutil', ['--proxy'], { timeoutMs: 5000 });
@@ -357,7 +436,8 @@ export async function baseChildEnv(extraPathDirs = []) {
   const env = { ...process.env };
   const proxyKeys = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'];
   if (!proxyKeys.some((k) => env[k])) Object.assign(env, await systemProxyEnv());
-  env.PATH = mergePath(extraPathDirs, (env.PATH || '').split(':'), ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']);
+  for (const k of Object.keys(env)) if (k.toLowerCase() === 'path' && k !== 'PATH') { env.PATH ||= env[k]; delete env[k]; }
+  env.PATH = mergePath(extraPathDirs, (env.PATH || '').split(path.delimiter), candidateBinDirs());
   if (!env.LANG) env.LANG = 'en_US.UTF-8';
   return env;
 }
@@ -376,7 +456,7 @@ export function isTempPath(p) {
   } catch {
     // keep as is
   }
-  return roots.some((r) => real === r || real.startsWith(`${r}/`));
+  return roots.some((r) => { const rel = path.relative(r, real); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); });
 }
 
 export function formatDuration(ms) {

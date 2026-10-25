@@ -397,6 +397,15 @@ async function main() {
   }
   switch (cmd) {
     case 'app': {
+      if (process.platform === 'win32') {
+        const exe = path.join(ROOT, 'dist/windows/win-unpacked/Oneiropolos.exe');
+        if (fs.existsSync(exe)) {
+          const child = spawn(exe, [], { stdio: 'ignore', detached: true, windowsHide: true });
+          child.on('error', () => {});
+          child.unref();
+        } else await cmdServe({ ...args, open: true });
+        break;
+      }
       const appPath = path.join(ROOT, 'dist', 'Oneiropolos.app');
       if (fs.existsSync(appPath)) spawn('/usr/bin/open', [appPath], { stdio: 'ignore', detached: true }).unref();
       else await cmdServe({ ...args, open: true });

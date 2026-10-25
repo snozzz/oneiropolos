@@ -6,13 +6,16 @@ import en from './locales/en.js';
 export const lang = normalizeLang(document.documentElement.lang);
 const dict = lang === 'en' ? en : (await import(`./locales/${lang}.js`)).default;
 
-export const t = makeT(dict, en);
+const translate = makeT(dict, en);
+export const shortcut = (text) => /Win/.test(navigator.platform) ? String(text).replaceAll('⌘', 'Ctrl+').replaceAll('⌥', 'Alt+').replaceAll('⇧', 'Shift+') : text;
+export const t = (key, params) => shortcut(translate(key, params));
 export const locale = localeOf(lang);
 export const fmtDuration = makeDuration(t);
 export { LANGS, setRoleNames };
 
 /** Static text in index.html: data-i18n (text), data-i18n-placeholder, data-i18n-title, data-i18n-aria. */
 export function translateDom(root = document) {
+  root.querySelectorAll('.kbd, .kbd-hint').forEach((el) => { el.textContent = shortcut(el.textContent); });
   root.querySelectorAll('[data-i18n]').forEach((el) => {
     el.textContent = t(el.dataset.i18n);
   });

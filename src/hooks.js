@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR } from './paths.js';
-import { baseChildEnv, runProcess, truncate } from './util.js';
+import { SHELL, shellArgs, baseChildEnv, runProcess, truncate } from './util.js';
 
 export const HOOK_TYPES = ['onSessionStart', 'onUserMessage', 'beforeToolCall', 'toolConfirmation', 'afterToolCall', 'beforeSubAgentStart', 'onSubAgentComplete', 'beforeCompress', 'onStop'];
 export const TOOL_HOOKS = new Set(['beforeToolCall', 'toolConfirmation', 'afterToolCall']);
@@ -15,7 +15,7 @@ export const PROMPT_HOOKS = new Set(['onSubAgentComplete', 'onStop']);
 export const CONTEXT_HOOKS = new Set(['onSessionStart', 'onUserMessage', 'beforeSubAgentStart']);
 
 export const GLOBAL_HOOKS_DIR = path.join(DATA_DIR, 'hooks');
-const SHELL = fs.existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/sh';
+
 
 /** snow-cli tool names in matchers map to WorkBuddy's. */
 const TOOL_ALIASES = {
@@ -178,7 +178,7 @@ export async function runHooks(type, context, { workdir, toolName = '', env = {}
       }
       if (!h.command) continue;
       let stdout = '';
-      const res = await runProcess(SHELL, ['-c', h.command], {
+      const res = await runProcess(SHELL, shellArgs(h.command), {
         cwd: workdir && fs.existsSync(workdir) ? workdir : DATA_DIR,
         env: childEnv,
         input,

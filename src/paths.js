@@ -19,7 +19,7 @@ export const WB_HOME = path.join(DATA_DIR, 'workbuddy-home');
 // touches the desktop app's.
 export const WB_PRODUCT_PATH = path.join(DATA_DIR, 'workbuddy-product.json');
 export const WB_AUTH_ID = 'wbloop-cli';
-export const WB_AUTH_DIR = path.join(HOME, 'Library/Application Support/CodeBuddyExtension/Data/Public/auth');
+export const WB_AUTH_DIR = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA || path.join(HOME, 'AppData/Local'), 'CodeBuddyExtension/Data/Public/auth') : path.join(HOME, 'Library/Application Support/CodeBuddyExtension/Data/Public/auth');
 export const WB_AUTH_FILE = process.env.WBLOOP_WB_AUTH_FILE || path.join(WB_AUTH_DIR, `${WB_AUTH_ID}.info`);
 
 export function ensureDirs() {
