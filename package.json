@@ -1,7 +1,7 @@
 {
   "name": "wbloop",
-  "version": "0.3.0",
-  "description": "Oneiropolos (守梦人 · 夢守): GPT (Codex, ChatGPT subscription) plans and audits, WorkBuddy executes — a local agent orchestrator with snow-cli style sub-agents, Team Mode, hooks, skills and MCP",
+  "version": "0.4.0",
+  "description": "Oneiropolos (守梦人 · 夢守): a lead plans and audits, an executor does the work — GPT, Claude, DeepSeek or WorkBuddy in either role — a local agent orchestrator with snow-cli style sub-agents, Team Mode, hooks, skills and MCP",
   "type": "module",
   "bin": {
     "wbloop": "bin/wbloop.js"

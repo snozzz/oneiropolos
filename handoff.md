@@ -17,7 +17,7 @@ Asked for:
 6. Plainer, calmer UI polish.
 7. Goal box placeholder: "Write your goal, then take a nap."
 
-Status: see the module log below.
+Status: all seven done (2026-10-25); see the module log. Open items at the end.
 
 ## Module log
 
@@ -29,6 +29,13 @@ Status: see the module log below.
 | Runner exits when its task folder is deleted | 6ffa3f7 | `test/loop-orphan.test.js` |
 | Engines (any engine in either role) | 420ab50 | `src/engines/*`, `config.roles`, `{lead}`/`{exec}` in texts, `/api/accounts` |
 | Accounts pane + role engine picker | a8234d6 | `public/js/engines.js`, Settings → Accounts |
+| Texts: {lead}/{exec}, shorter hints, nap placeholder | ffa3a56 | placeholder "Write your goal, then take a nap." |
+| UI polish (quieter header/cards) | 14444a4 | |
+| CLI: --lead/--exec, login/logout any engine, doctor | e55d41f | |
+| Docs (README en/zh) | cb3136d | |
+| DeepSeek: unattended permission presets | dc7267a | fixes "1 entry did not activate" (permission service) |
+| DeepSeek: stale sign-in host cleanup | fe455c3 | |
+| Version 0.4.0, app rebuilt and relaunched | (this commit) | |
 
 ## Design decisions
 
@@ -54,7 +61,9 @@ Status: see the module log below.
   processes behind.
 - Claude Code's sandbox blocks writes outside the lead's scratch dir (tested with a non-temp folder; /tmp is always
   writable for it).
-- Not yet run for real: a DeepSeek task after signing in (needs the user's sign-in), WorkBuddy as lead.
+- WorkBuddy (deepseek-v4.1-flash) lead → Claude Haiku executor: done in 27 s (verdict via CodeBuddy `--json-schema`).
+- Not yet run for real: a DeepSeek task after signing in. The sign-in page was reached (it shows the user's DeepSeek
+  account and a 登录 button that grants this client model access); it was left for the user to click.
 
 ## Environment facts worth knowing
 
@@ -67,4 +76,12 @@ Status: see the module log below.
 
 ## Open items / next steps
 
-- (filled in as modules land)
+- **User to do**: Settings → Accounts → DeepSeek → Sign in (one click on DeepSeek's page); Claude → Sign in (or
+  Advanced → Claude folder `~/.claude` to share the usual Claude Code login). Then a real DeepSeek task.
+- The "[Image #2]" reference for the right-click menu never arrived; the menu follows Claude/ChatGPT desktop
+  (Pin, Rename, Open in Finder, Export, Pause/Stop/Continue, Delete). Adjust if the screenshot shows otherwise.
+- Known limits: ChatGPT and DeepSeek executors have no tool hooks, so the sensitive-command policy can't ask the
+  user there (their sandbox keeps writes in the working dir instead). DeepSeek executors only write inside the working
+  directory (no extra writable roots), so Team Mode teammates on DeepSeek can't post to the team board.
+- If the app's server dies during a Claude sign-in, `claude auth login` lingers until its own timeout.
+- Unused locale keys from the old login panels (`run.wbLogin`, `run.noticeDone`, …) can be removed in a cleanup.
