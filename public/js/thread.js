@@ -134,7 +134,7 @@ export function renderHeader() {
   const mode = set.agents?.mode && set.agents.mode !== 'normal' ? TASK_MODES().find(([v]) => v === set.agents.mode)?.[1] : '';
   $('#run-header').innerHTML = `
     <div class="head-row">
-      <div class="chat-title" title="${esc(s.goal)}">${esc(firstLine(s.goal, 120))}</div>
+      <div class="chat-title" title="${esc(s.goal)}">${esc(s.title || firstLine(s.goal, 120))}</div>
       <div class="head-btns">
         ${plan.length ? hbtn('plan', 'list', t('run.planCount', { done: planDone, n: plan.length })) : ''}
         ${btns.join('')}

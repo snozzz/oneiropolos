@@ -4,6 +4,7 @@ import { ICON, BRAND, statusGlyph } from './brand.js';
 import { lang, locale, t, translateDom } from './i18n.js';
 import { applyTemplate, fillTemplate, findTemplate, focusGoal, goalText, initHome, insertIntoGoal, loadTemplates, openParams, openTemplateMenu, pickFolder, pickRunSettings, renderHero, renderLede, setNewMode, setNewTeam, updateHomeChips } from './home.js';
 import { closeModal, closePalette, closePopover, modalOpen, openPalette, paletteOpen, popoverOpen } from './overlay.js';
+import { initContextMenus } from './ctxmenu.js';
 import { openGptPanel, openHelp, openSettings, openWbPanel, quotaText, registerPanels } from './panels.js';
 import { applyDensity, closeRun, initThread, openAside, openRun, renderHeader, runAction, setDensity } from './thread.js';
 import { openAgentsPicker, openGitLine, openLoops, openNewPrompt, openNotebook, openReview, openSkillsPicker, openTodoPicker, openUsage, runExecuteCommand } from './tools.js';
@@ -84,7 +85,7 @@ $('#btn-help').onclick = openHelp;
 function runItem(r) {
   const tip = `${tStatus(r.status)}${r.status === 'running' ? ` (${tPhase(r.phase)})` : ''} · ${t('home.roundOf', { n: r.round, max: r.maxRounds ?? '?' })} · ${fmtRelative(r.updatedAt)}\n${oneLine(r.goal, 300)}`;
   return `<li class="run-item${r.id === app.currentId ? ' active' : ''}" data-id="${esc(r.id)}" title="${esc(tip)}">
-    <span class="sglyph ${esc(r.status)}">${statusGlyph(r.status)}</span><span class="title">${esc(firstLine(r.goal, 60))}</span>${r.team && r.team !== 'off' ? `<span class="mini-badge" title="${esc(t('form.team'))}">${ICON.team}</span>` : ''}${ACTIVE.has(r.status) ? '' : `<span class="when">${esc(shortWhen(r.updatedAt))}</span>`}
+    <span class="sglyph ${esc(r.status)}">${statusGlyph(r.status)}</span><span class="title">${esc(r.title || firstLine(r.goal, 60))}</span>${r.team && r.team !== 'off' ? `<span class="mini-badge" title="${esc(t('form.team'))}">${ICON.team}</span>` : ''}${ACTIVE.has(r.status) ? '' : `<span class="when">${esc(shortWhen(r.updatedAt))}</span>`}
   </li>`;
 }
 
@@ -104,13 +105,18 @@ async function refreshRuns() {
   } catch {
     return;
   }
-  const active = app.runs.filter((r) => ACTIVE.has(r.status));
-  const recent = app.runs.filter((r) => !ACTIVE.has(r.status));
+  // a rename in progress lives inside the list: don't redraw it under the user's cursor
+  if (app.renaming) return;
+  const pinned = app.runs.filter((r) => r.pinned).sort((a, b) => String(b.pinned).localeCompare(String(a.pinned)));
+  const active = app.runs.filter((r) => !r.pinned && ACTIVE.has(r.status));
+  const recent = app.runs.filter((r) => !r.pinned && !ACTIVE.has(r.status));
+  $('#label-pinned').classList.toggle('hidden', !pinned.length);
+  $('#list-pinned').innerHTML = pinned.map(runItem).join('');
   $('#label-active').classList.toggle('hidden', !active.length);
   $('#n-active').textContent = active.length > 1 ? String(active.length) : '';
   $('#list-active').innerHTML = active.map(runItem).join('');
-  $('#label-recent').classList.toggle('hidden', !recent.length && Boolean(active.length));
-  $('#list-recent').innerHTML = recent.length ? recent.map(runItem).join('') : active.length ? '' : `<li class="run-empty">${esc(t('side.empty1'))}<br>${esc(t('side.empty2'))}</li>`;
+  $('#label-recent').classList.toggle('hidden', !recent.length && Boolean(active.length || pinned.length));
+  $('#list-recent').innerHTML = recent.length ? recent.map(runItem).join('') : active.length || pinned.length ? '' : `<li class="run-empty">${esc(t('side.empty1'))}<br>${esc(t('side.empty2'))}</li>`;
   renderLede();
 }
 
@@ -319,13 +325,14 @@ function route() {
 
 window.addEventListener('hashchange', route);
 
-Object.assign(actions, { refreshEnv, refreshRuns, renderAccounts, setDensity, refreshCommands });
+Object.assign(actions, { refreshEnv, refreshRuns, renderAccounts, setDensity, refreshCommands, renderHeader });
 registerPanels();
 
 (async function init() {
   applyTheme(document.documentElement.dataset.theme);
   initHome();
   initThread();
+  initContextMenus();
   await Promise.all([refreshEnv(), refreshRuns(), loadTemplates(), loadUi(), refreshCommands()]);
   if (!location.hash) {
     const active = app.runs.find((r) => ACTIVE.has(r.status));

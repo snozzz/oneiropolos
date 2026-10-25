@@ -824,6 +824,11 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; flex: none; accen
 .menu-item.danger svg { color: var(--err); }
 .menu-item.checked::after { content: "✓"; margin-left: auto; color: var(--gold); }
 .menu-sep { height: 1px; background: var(--line); margin: 5px 8px; }
+.menu-item:disabled { opacity: .4; cursor: default; background: none; }
+.popover.ctx-menu { min-width: 196px; padding: 5px; border-radius: 11px; }
+.ctx-menu .menu-item { padding: 6px 10px; border-radius: 7px; }
+.run-item.ctx-on { background: var(--surface-2); color: var(--ink); }
+.rename-input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 1px 6px; margin: -2px 0; outline: none; }
 .menu-label { font-size: 11px; letter-spacing: .1em; color: var(--muted); padding: 6px 11px 4px; }
 .pop-hint { padding: 2px 11px 8px; margin: 0; max-width: 330px; }
 .more-pop { min-width: 250px; }

@@ -18,6 +18,9 @@ export function runDir(id) {
 }
 
 const statePath = (id) => path.join(runDir(id), 'state.json');
+// Sidebar-only facts (a name the user gave the task, pinned or not), kept apart from state.json so the UI never
+// races the runner writing state.
+const metaPath = (id) => path.join(runDir(id), 'meta.json');
 export const eventsPath = (id) => path.join(runDir(id), 'events.jsonl');
 const controlPath = (id) => path.join(runDir(id), 'control.jsonl');
 export const roundDir = (id, n) => path.join(runDir(id), 'rounds', String(n));
@@ -114,6 +117,21 @@ export function effectiveStatus(state) {
   return state.status;
 }
 
+export function readMeta(id) {
+  const m = readJson(metaPath(id), {}) || {};
+  return { title: typeof m.title === 'string' ? m.title : '', pinned: m.pinned ? String(m.pinned) : null };
+}
+
+/** patch: { title?: string ('' = back to the goal's first line), pinned?: boolean } */
+export function writeMeta(id, patch = {}) {
+  if (!readState(id)) throw new Error(t('srv.runMissing', { id }));
+  const m = readMeta(id);
+  if (typeof patch.title === 'string') m.title = patch.title.replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (typeof patch.pinned === 'boolean') m.pinned = patch.pinned ? nowIso() : null;
+  writeJsonAtomic(metaPath(id), m);
+  return m;
+}
+
 export function listRuns() {
   ensureDirs();
   const out = [];
@@ -121,9 +139,12 @@ export function listRuns() {
     if (!isValidRunId(id)) continue;
     const s = readState(id);
     if (!s) continue;
+    const meta = readMeta(id);
     out.push({
       id: s.id,
       goal: s.goal,
+      title: meta.title,
+      pinned: meta.pinned,
       workdir: s.workdir,
       status: effectiveStatus(s),
       phase: s.phase,

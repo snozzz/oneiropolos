@@ -139,6 +139,7 @@ export const ICON = {
   trash: svg('<path d="M5 7h14M10 4.5h4M7 7l.8 11.2a1.5 1.5 0 0 0 1.5 1.3h5.4a1.5 1.5 0 0 0 1.5-1.3L17 7"/>'),
   list: svg('<path d="M9.5 7h10M9.5 12h10M9.5 17h10"/><circle cx="5" cy="7" r=".9" fill="currentColor"/><circle cx="5" cy="12" r=".9" fill="currentColor"/><circle cx="5" cy="17" r=".9" fill="currentColor"/>'),
   edit: svg('<path d="M14.5 5.5l4 4L9 19H5v-4z"/><path d="M12.5 7.5l4 4"/>'),
+  pin: svg('<path d="M9.5 4.5h5l-.8 5.2 3.3 3.3H7l3.3-3.3z"/><path d="M12 13v6.5"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 3v1.5M12 19.5V21M3 12h1.5M19.5 12H21M5.6 5.6l1.1 1.1M17.3 17.3l1.1 1.1M5.6 18.4l1.1-1.1M17.3 6.7l1.1-1.1"/>'),
   moon: svg('<path d="M18.5 14.5A7.5 7.5 0 0 1 9.5 5.5a7.5 7.5 0 1 0 9 9z"/>'),
   palette: svg('<path d="M12 4a8 8 0 1 0 0 16c1.2 0 1.6-.9 1.2-1.8-.5-1-.1-2.2 1.3-2.2H17a3.5 3.5 0 0 0 3-3.5C20 7.4 16.4 4 12 4z"/><circle cx="8" cy="11" r=".9" fill="currentColor"/><circle cx="11" cy="7.8" r=".9" fill="currentColor"/><circle cx="15.2" cy="8.4" r=".9" fill="currentColor"/>'),

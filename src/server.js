@@ -12,7 +12,7 @@ import { ROOT, SERVER_INFO_PATH, ensureDirs } from './paths.js';
 import * as svc from './service.js';
 import { Snapshotter } from './snapshot.js';
 import { deleteTemplate, listTemplates, saveTemplate } from './templates.js';
-import { deleteRun, effectiveStatus, isRunnerAlive, isValidRunId, listRuns, livePath, readEvents, readState, roundDir, runDir } from './store.js';
+import { deleteRun, effectiveStatus, isRunnerAlive, isValidRunId, listRuns, livePath, readEvents, readMeta, readState, roundDir, runDir, writeMeta } from './store.js';
 import { isPidAlive, readJson, writeJsonAtomic } from './util.js';
 import { openUrl } from './workbuddy.js';
 
@@ -53,7 +53,7 @@ async function readBody(req, limit = 2 * 1024 * 1024) {
 
 export function publicState(s) {
   if (!s) return null;
-  return { ...s, error: s.error ? String(s.error).split('\n')[0] : null, status: effectiveStatus(s), alive: isRunnerAlive(s) };
+  return { ...s, ...readMeta(s.id), error: s.error ? String(s.error).split('\n')[0] : null, status: effectiveStatus(s), alive: isRunnerAlive(s) };
 }
 
 function serveStatic(pathname, res, token) {
@@ -226,6 +226,7 @@ async function route(req, res, url) {
     const st = readState(id);
     if (!st) return sendJson(res, 404, { error: t('srv.runMissing', { id }) });
     if (sub === '' && method === 'GET') return sendJson(res, 200, publicState(st));
+    if (sub === '' && method === 'PATCH') return sendJson(res, 200, writeMeta(id, await readBody(req)));
     if (sub === '' && method === 'DELETE') {
       deleteRun(id);
       return sendJson(res, 200, { ok: true });

@@ -24,6 +24,35 @@ final class DragStrip: NSView {
     }
 }
 
+/// The web view without its browser menu items: whatever menu WebKit builds (text fields, selected text), Back,
+/// Forward, Reload, Inspect Element and the open/download-in-new-window items are taken out, so only app-like
+/// entries (Cut, Copy, Paste, Look Up, Translate, spelling …) remain. Menus elsewhere are drawn by the page itself.
+final class AppWebView: WKWebView {
+    static let browserItems: Set<String> = [
+        "WKMenuItemIdentifierGoBack", "WKMenuItemIdentifierGoForward", "WKMenuItemIdentifierReload",
+        "WKMenuItemIdentifierInspectElement", "WKMenuItemIdentifierOpenLinkInNewWindow",
+        "WKMenuItemIdentifierDownloadLinkedFile", "WKMenuItemIdentifierOpenImageInNewWindow",
+        "WKMenuItemIdentifierDownloadImage", "WKMenuItemIdentifierCopyImage", "WKMenuItemIdentifierOpenFrameInNewWindow",
+        "WKMenuItemIdentifierOpenMediaInNewWindow", "WKMenuItemIdentifierDownloadMedia",
+        "WKMenuItemIdentifierShowHideMediaControls", "WKMenuItemIdentifierToggleFullScreen",
+        "WKMenuItemIdentifierToggleEnhancedFullScreen", "WKMenuItemIdentifierSearchWeb", "WKMenuItemIdentifierShareMenu",
+    ]
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        for item in menu.items where Self.browserItems.contains(item.identifier?.rawValue ?? "") {
+            menu.removeItem(item)
+        }
+        // no separators left dangling at the edges or doubled up
+        while let first = menu.items.first, first.isSeparatorItem { menu.removeItem(first) }
+        while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }
+        var previousSeparator = false
+        for item in menu.items {
+            if item.isSeparatorItem && previousSeparator { menu.removeItem(item) } else { previousSeparator = item.isSeparatorItem }
+        }
+        super.willOpenMenu(menu, with: event)
+    }
+}
+
 /// The shell's own words in the three interface languages; the web page has its own dictionaries.
 enum L10n {
     static let names = ["en": "Oneiropolos", "zh": "守梦人", "ja": "夢守"]
@@ -331,8 +360,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private func createWindow() {
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "wbloop")
-        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
-        webView = WKWebView(frame: .zero, configuration: config)
+        // Web Inspector only on request: `defaults write local.wbloop.app DevTools -bool YES`
+        config.preferences.setValue(UserDefaults.standard.bool(forKey: "DevTools"), forKey: "developerExtrasEnabled")
+        webView = AppWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.setValue(false, forKey: "drawsBackground")
