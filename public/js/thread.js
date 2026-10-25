@@ -190,8 +190,8 @@ function renderNotice() {
     show('gold', 'list', t('run.noticePlan'), `${b('plan', t('run.viewPlan'))}${b('approve', t('run.approvePlan'), 'primary')}`);
     placeholder = t('run.placeholderPlan');
   } else if (status === 'paused' && message) {
-    const needLogin = s.messageKey === 'srv.pause.wbLogin' || s.messageKey === 'srv.pause.wbAuth';
-    show('warn', 'pause', message, `${needLogin ? b('wblogin', t('run.wbLogin')) : ''}${b('resume', t('run.continue'), 'primary')}`);
+    const needLogin = ['srv.pause.wbLogin', 'srv.pause.wbAuth', 'srv.pause.gptAuth', 'srv.pause.execAuth', 'srv.pause.noEngine', 'srv.pause.noCodex', 'srv.pause.noWb'].includes(s.messageKey);
+    show('warn', 'pause', message, `${needLogin ? b('accounts', t('settings.accounts')) : ''}${b('resume', t('run.continue'), 'primary')}`);
   } else if (status === 'waiting' && message) {
     show('warn', 'hourglass', message);
   } else if (status === 'failed' && message) {
@@ -203,9 +203,8 @@ function renderNotice() {
   } else if (status === 'waiting_user') {
     show('warn', 'help', s.question ? t('run.noticeAskQ', { q: oneLine(s.question, 300) }) : t('run.noticeAsk'));
     placeholder = t('run.placeholderReply');
-  } else if (status === 'done') {
-    show('ok', 'check', t('run.noticeDone', { n: s.round }));
   } else {
+    // done: the closing card in the thread already says so
     box.className = 'notice hidden';
     box.innerHTML = '';
   }
@@ -246,8 +245,8 @@ export async function runAction(act, anchor) {
       location.hash = '#new';
     } else if (act === 'openDir') {
       await api('/api/open', { method: 'POST', body: { path: app.state.workdir } });
-    } else if (act === 'wblogin') {
-      actions.startWbLogin?.();
+    } else if (act === 'accounts') {
+      actions.openSettings?.('accounts');
     } else if (act === 'settings') {
       runSettingsModal();
     } else if (act === 'alldiff') {

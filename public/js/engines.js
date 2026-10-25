@@ -50,11 +50,13 @@ export function modelName(id, model) {
   return m?.name || model;
 }
 
-/** "Claude Opus", "GPT-5.6-Sol", "DeepSeek Flash": short enough for the composer's model button. */
+/** "Claude Opus", "GPT-5.6-Sol", "DeepSeek Flash", "Kimi-K2": short enough for the composer's model button. */
 export function roleLabel(st, role) {
   const s = roleSpec(st, role);
+  if (!s.model || s.model === 'auto') return s.name;
   const name = modelName(s.engine, s.model);
-  return name.toLowerCase().includes(s.name.toLowerCase()) || /^gpt/i.test(name) ? name : `${s.name} ${name}`;
+  // Claude's aliases (Opus, Sonnet …) need the brand; other catalogs name their models fully
+  return s.engine === 'claude' && !/claude/i.test(name) ? `Claude ${name}` : name;
 }
 
 export function engineStatus(id) {

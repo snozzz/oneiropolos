@@ -292,9 +292,9 @@ test('i18n: the three dictionaries have the same keys and every key used in the 
   const panels = fs.readFileSync(path.join(root, 'public', 'js', 'panels.js'), 'utf8');
   for (const m of panels.matchAll(/'(help\.[kc]\.\w+)'/g)) if (!(m[1] in en)) missing.add(`panels.js: ${m[1]}`);
   assert.deepEqual([...missing], []);
-  // placeholders match across languages
+  // placeholders match across languages ({lead} and {exec} are always filled, so a language may leave them out)
   for (const k of Object.keys(en)) {
-    const ph = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+    const ph = (s) => [...new Set([...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((x) => x !== 'lead' && x !== 'exec'))].sort().join(',');
     assert.equal(ph(zh[k]), ph(en[k]), `zh placeholders of ${k}`);
     assert.equal(ph(ja[k]), ph(en[k]), `ja placeholders of ${k}`);
   }
