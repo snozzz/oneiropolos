@@ -24,6 +24,11 @@ Status: see the module log below.
 | Module | Commit | Notes |
 | --- | --- | --- |
 | Baseline (minimal home, purge overlay removed, codex.home) | 379e659 | uncommitted work from the previous session |
+| Settings dialog: fixed size | 19edc7c | `.modal-card.tabs` fixed height; only the pane scrolls |
+| Sidebar context menu, pin, rename; no WebKit menu | 0dba213 | `public/js/ctxmenu.js`, `meta.json` per task, `AppWebView` in `app/main.swift` |
+| Runner exits when its task folder is deleted | 6ffa3f7 | `test/loop-orphan.test.js` |
+| Engines (any engine in either role) | 420ab50 | `src/engines/*`, `config.roles`, `{lead}`/`{exec}` in texts, `/api/accounts` |
+| Accounts pane + role engine picker | a8234d6 | `public/js/engines.js`, Settings → Accounts |
 
 ## Design decisions
 
@@ -38,6 +43,18 @@ Status: see the module log below.
   - WorkBuddy → bundled CodeBuddy core (existing), login file `wbloop-cli.info`.
 - Every engine keeps its login separate from the user's own installs (same rule WorkBuddy and codex-home
   already followed).
+
+## Verified for real (2026-10-25)
+
+- Claude Haiku as lead and executor: tiny goal done in 37 s, audit checked the file itself.
+- Claude lead → ChatGPT (gpt-5.6-luna) executor: done in 45 s.
+- DeepSeek executor without sign-in: the real DSH boots our patch and fails as `auth` (task pauses for sign-in).
+- Sign-in APIs reach the real pages: Claude `claude.com/cai/oauth/authorize`, DeepSeek
+  `platform.deepseek.com/dsh/authorize` (started via the DSH web host's `account/startSignIn`); cancel leaves no
+  processes behind.
+- Claude Code's sandbox blocks writes outside the lead's scratch dir (tested with a non-temp folder; /tmp is always
+  writable for it).
+- Not yet run for real: a DeepSeek task after signing in (needs the user's sign-in), WorkBuddy as lead.
 
 ## Environment facts worth knowing
 
