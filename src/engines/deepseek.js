@@ -236,8 +236,10 @@ function writePatch(o, { readOnly }) {
   // the shipped headless profile ignores stored sign-ins; turn the account route back on (DSH documents these rows)
   if (useAccount) rows.push({ id: 'credentials', disabled: false }, { id: 'authorization', disabled: false }, { id: 'deepseek-account', disabled: false });
   rows.push({ id: 'agent-default-model', config: { provider: useAccount ? 'deepseek-account' : 'deepseek-official', model: o.model || defaultModel(), ...(o.effort && EFFORTS.includes(o.effort) ? { reasoningEffort: o.effort } : {}) } });
-  // unattended: nothing can be approved by a person, so the sandbox is the boundary (read-only for the lead)
+  // unattended: nothing can be approved by a person, so the sandbox is the boundary (read-only for the lead).
+  // DSH's permission service needs a preset matching sandbox + approval, so both unattended pairs are declared.
   rows.push({ id: 'approval', config: { policy: 'never' } });
+  rows.push({ id: 'permission', config: { presets: { 'unattended-read': { sandbox: 'read-only', approval: 'never' }, 'unattended-write': { sandbox: 'workspace-write', approval: 'never' } }, defaultPreset: readOnly ? 'unattended-read' : 'unattended-write' } });
   rows.push({ id: 'sandbox-policy', config: { mode: readOnly ? 'read-only' : 'workspace-write', workspaceRoot: o.cwd } });
   if (o.systemText) rows.push({ id: 'system-prompt', config: { personaSuffix: literal(o.systemText) } });
   const file = path.join(path.dirname(o.rawFile || os.tmpdir()), `dsh-patch-${crypto.randomBytes(4).toString('hex')}.yml`);
@@ -329,7 +331,8 @@ async function run(o, { readOnly, onEvent }) {
     if (res.aborted) errors.push(t('srv.stopped'));
     else if (res.timedOut) errors.push(t('srv.wb.timeout', { min: Math.round(o.timeoutMs / 60000) }));
     else if (res.idleTimedOut) errors.push(t('srv.wb.idle', { min: Math.round(o.idleTimeoutMs / 60000) }));
-    if (stderrTail) errors.push(stderrTail);
+    // the stderr line repeats the turn's own error; it only helps when nothing else was reported
+    if (stderrTail && !errors.length) errors.push(stderrTail);
     if (!errors.length) errors.push(t('srv.engine.crashed', { code: res.code, signal: res.signal || '-' }));
   }
   const errorText = errors.join('\n');

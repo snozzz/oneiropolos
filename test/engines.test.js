@@ -143,6 +143,7 @@ test('Claude leads, DeepSeek executes: verdicts via --json-schema, work via DSH 
   assert.ok(dc[0].home.endsWith('dsh-home'));
   assert.ok(dc[0].args[0].endsWith('app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js'), 'the signed entry inside app.asar');
   assert.deepEqual(dc[0].patch.find((r) => r.id === 'approval').config, { policy: 'never' });
+  assert.equal(dc[0].patch.find((r) => r.id === 'permission').config.defaultPreset, 'unattended-write');
   assert.equal(dc[0].patch.find((r) => r.id === 'agent-default-model').config.model, 'deepseek-v4-pro');
   assert.ok(dc[0].patch.find((r) => r.id === 'system-prompt').config.personaSuffix.includes('You are DeepSeek, working as the Executor'));
   assert.ok(dc[0].prompt.includes('create d.txt'));
