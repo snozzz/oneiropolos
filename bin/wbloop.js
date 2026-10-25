@@ -17,7 +17,8 @@ import { listSubagents } from '../src/subagents.js';
 import { appendControl, effectiveStatus, isValidRunId, listRuns, readEvents, readState } from '../src/store.js';
 import { PLACEHOLDER_RE, findTemplate, listTemplates } from '../src/templates.js';
 import { oneLine, sleep } from '../src/util.js';
-import { findWorkBuddy, listWbModels, openUrl, wbAuthState, wbLogin, wbLogout } from '../src/workbuddy.js';
+import { findWorkBuddy, listWbModels, openUrl, wbAuthState } from '../src/workbuddy.js';
+import { ENGINE_IDS, allStatus, engine, engineOf } from '../src/engines/index.js';
 
 const color = process.stdout.isTTY && !process.env.NO_COLOR;
 const paint = (code) => (s) => (color ? `\x1b[${code}m${s}\x1b[0m` : String(s));
@@ -170,8 +171,30 @@ export function printEvent(ev) {
   }
 }
 
+const ENGINE_ALIASES = { chatgpt: 'chatgpt', gpt: 'chatgpt', codex: 'chatgpt', claude: 'claude', deepseek: 'deepseek', ds: 'deepseek', workbuddy: 'workbuddy', wb: 'workbuddy' };
+
+function engineArg(v) {
+  const id = ENGINE_ALIASES[String(v || '').toLowerCase()];
+  if (!id) throw new Error(t('cli.badEngine', { v, list: ENGINE_IDS.join(', ') }));
+  return id;
+}
+
 function buildOverrides(args) {
-  const o = { codex: {}, workbuddy: {}, loop: {}, team: {}, agents: {} };
+  const o = { roles: { lead: {}, executor: {} }, codex: {}, workbuddy: {}, loop: {}, team: {}, agents: {} };
+  const cfg = loadConfig();
+  if (args.lead) o.roles.lead.engine = engineArg(args.lead);
+  if (args.exec) o.roles.executor.engine = engineArg(args.exec);
+  const leadEngine = o.roles.lead.engine || engineOf(cfg, 'lead');
+  const execEngine = o.roles.executor.engine || engineOf(cfg, 'executor');
+  // --gpt-model / --wb-model keep working: they name the role's model while that role is on GPT / WorkBuddy
+  const leadModel = args['lead-model'] || (leadEngine === 'chatgpt' ? args['gpt-model'] : '');
+  const execModel = args['exec-model'] || (execEngine === 'workbuddy' ? args['wb-model'] : '');
+  if (leadModel) o.roles.lead.model = String(leadModel);
+  if (execModel) o.roles.executor.model = String(execModel);
+  if (args['lead-effort'] || (leadEngine === 'chatgpt' && args.effort)) o.roles.lead.effort = String(args['lead-effort'] || args.effort);
+  if (args['exec-effort'] || (execEngine === 'workbuddy' && args['wb-effort'])) o.roles.executor.effort = String(args['exec-effort'] || args['wb-effort']);
+  // a new engine without a model named starts from that engine's own default
+  for (const r of ['lead', 'executor']) if (o.roles[r].engine && !o.roles[r].model) o.roles[r].model = '';
   if (args['gpt-model']) o.codex.model = String(args['gpt-model']);
   if (args.effort) o.codex.effort = String(args.effort);
   if (args['web-search']) o.codex.webSearch = true;
@@ -270,16 +293,27 @@ function pickRun(args) {
 
 async function cmdDoctor() {
   const cfg = loadConfig();
+  const engines = await allStatus(cfg);
+  const okMark = (b) => (b ? c.green('✔') : c.red('✘'));
+  const roles = { [engineOf(cfg, 'lead')]: [t('role.short.lead')], [engineOf(cfg, 'executor')]: [] };
+  roles[engineOf(cfg, 'executor')] = [...(roles[engineOf(cfg, 'executor')] || []), t('role.short.executor')];
+  console.log(c.bold(t('settings.accounts')));
+  for (const id of ENGINE_IDS) {
+    const e = engines[id];
+    const state = !e.installed ? t('acct.notInstalled') : e.loggedIn ? [e.account === e.vendor ? '' : e.account, e.plan].filter(Boolean).join(' · ') || t('acct.loggedIn') : t('acct.notLoggedIn');
+    console.log(`${okMark(e.installed && e.loggedIn)} ${e.vendor}${roles[id] ? c.yellow(` (${roles[id].join(', ')})`) : ''}: ${state}${e.version ? c.gray(` · ${e.version}`) : ''}`);
+  }
+  console.log('');
   const codex = findCodex(cfg.codex.path);
-  const info = await codexInfo(codex);
+  const info = await codexInfo(codex, cfg.codex.home);
   const wb = findWorkBuddy(cfg.workbuddy.appPath);
   const auth = wbAuthState();
   const ok = (b) => (b ? c.green('✔') : c.red('✘'));
   console.log(c.bold(t('cli.doctor.title', { app: brandName(), latin: subName() })));
   console.log(`${ok(info.installed)} Codex CLI: ${info.installed ? `${info.path} (${info.version})` : t('cli.doctor.noCodex')}`);
   console.log(`${ok(info.loggedIn)} ${t('cli.doctor.gptLogin')}: ${info.statusText || t('cli.notLoggedIn')}${info.loggedIn && !info.chatgpt ? c.yellow(` (${t('cli.doctor.notChatgpt')})`) : ''}`);
-  const models = listCodexModels().filter((m) => m.visible).map((m) => (m.unavailable ? c.gray(`${m.id}(✗)`) : m.id));
-  console.log(`  ${t('cli.doctor.gptModels')}: ${models.join(', ') || '-'} · ${t('cli.default')} ${cfg.codex.model || defaultCodexModel() || '-'}`);
+  const models = listCodexModels(cfg.codex.home).filter((m) => m.visible).map((m) => (m.unavailable ? c.gray(`${m.id}(✗)`) : m.id));
+  console.log(`  ${t('cli.doctor.gptModels')}: ${models.join(', ') || '-'} · ${t('cli.default')} ${cfg.codex.model || defaultCodexModel(cfg.codex.home) || '-'}`);
   const q = info.loggedIn ? await svc.getGptQuota() : null;
   if (q) console.log(`  ${t('cli.doctor.quota')}: ${quotaLine(q)}`);
   console.log(`${ok(!!wb)} WorkBuddy: ${wb ? `${wb.app} (${wb.appVersion}, core ${wb.cliVersion})` : t('srv.wb.missing')}`);
@@ -316,26 +350,28 @@ function parseStartAt(v) {
   return new Date(at).toISOString();
 }
 
+/** Signs an engine in the same way the Accounts pane does (browser); Claude also accepts a pasted code here. */
 async function cmdLogin(target) {
-  const cfg = loadConfig();
-  if (target === 'codex' || target === 'gpt') {
-    const codex = findCodex(cfg.codex.path);
-    if (!codex) throw new Error(t('srv.codex.missing'));
-    await new Promise((resolve) => {
-      spawn(codex.path, ['login'], { stdio: 'inherit' }).on('exit', resolve);
-    });
-    return;
-  }
-  const wb = findWorkBuddy(cfg.workbuddy.appPath);
-  if (!wb) throw new Error(t('srv.wb.missing'));
-  const res = await wbLogin(wb, {
+  const id = engineArg(target);
+  const eng = engine(id);
+  let rl = null;
+  const res = await eng.login(loadConfig(), {
     onUpdate: (u) => {
-      if (u.state === 'waiting') console.log(`${t('cli.loginOpened')}\n${u.authUrl}`);
+      if (u.state === 'waiting') console.log(`${t('acct.waiting')}\n${u.authUrl || ''}`);
+      if (u.state === 'waiting' && u.canPaste && process.stdin.isTTY && !rl) {
+        rl = readline.createInterface({ input: process.stdin });
+        console.log(c.gray(t('acct.codePlaceholder')));
+        rl.on('line', (line) => line.trim() && eng.sendCode?.(line.trim()));
+      }
       if (u.state === 'error') console.log(c.red(u.message));
     },
   });
-  if (res.ok) console.log(c.green(`${t('srv.wb.loggedIn')}${res.account?.userName ? `: ${res.account.userName}` : ''}`));
-  else process.exitCode = 1;
+  rl?.close();
+  if (res.ok) console.log(c.green(`${t('acct.signedIn', { name: eng.meta.vendor })}${res.account ? `: ${res.account}` : ''}`));
+  else {
+    console.log(c.red(res.error || t('acct.failed')));
+    process.exitCode = 1;
+  }
 }
 
 async function cmdServe(args) {
@@ -483,8 +519,8 @@ async function main() {
       await cmdLogin(args._[1] || 'workbuddy');
       break;
     case 'logout': {
-      const wb = findWorkBuddy(loadConfig().workbuddy.appPath);
-      await wbLogout(wb);
+      const id = engineArg(args._[1] || 'workbuddy');
+      await svc.signOut(id);
       console.log(t('cli.loggedOut'));
       break;
     }
