@@ -5,6 +5,7 @@ import { ICON, ORNAMENT, TEMPLATE_ICON, pickQuote } from './brand.js';
 import { autosize, enhanceComposer } from './composer.js';
 import { t } from './i18n.js';
 import { TASK_MODES, TEAM_MODES, mountSettingsForm, openSchedulePopover, readSettingsForm, scheduleLabel, settingsSummary, wbModel } from './forms.js';
+import { ENGINE_NAMES, engineOf, engineStatus, roleLabel, roleSpec, useRoleNames } from './engines.js';
 import { closeModal, closePopover, confirmDialog, menuItem, openModal, openPopover } from './overlay.js';
 import { expandInjections } from './tools.js';
 
@@ -19,7 +20,10 @@ let chipsHtml = '';
 export function pickRunSettings(cfg) {
   // without a chosen GPT model use the account's default, so the UI can show a concrete name
   return {
+    roles: JSON.parse(JSON.stringify(cfg.roles || {})),
     codex: { ...cfg.codex, model: cfg.codex.model || app.env?.codex.defaultModel || '' },
+    claude: { ...cfg.claude },
+    deepseek: { ...cfg.deepseek },
     workbuddy: { ...cfg.workbuddy },
     loop: { ...cfg.loop },
     team: { ...cfg.team },
@@ -71,7 +75,9 @@ export function updateHomeChips() {
   pick.title = dir ? shortPath(dir) : t('home.pickDirTitle');
   const st = app.newSettings;
   if (st) {
-    $('#params-label').textContent = `${st.codex.model || 'GPT'} · ${wbModel(st.workbuddy.model || 'auto').name}`;
+    $('#params-label').textContent = `${roleLabel(st, 'lead')} · ${roleLabel(st, 'executor')}`;
+    useRoleNames(st);
+    actions.renderAccounts?.();
     $('#btn-params').title = settingsSummary(st);
   }
   if (app.newStartAt && Date.parse(app.newStartAt) <= Date.now()) app.newStartAt = '';
@@ -292,7 +298,11 @@ function openModeMenu(anchor) {
 function openSchedule(anchor) {
   openSchedulePopover(anchor, {
     current: app.newStartAt,
-    modelId: (app.newSettings || app.env?.config)?.workbuddy?.model || 'auto',
+    // night discounts exist for WorkBuddy models only
+    modelId: (() => {
+      const spec = roleSpec(app.newSettings || app.env?.config, 'executor');
+      return spec.engine === 'workbuddy' ? spec.model || 'auto' : '';
+    })(),
     onPick: (iso) => {
       app.newStartAt = iso;
       updateHomeChips();
@@ -477,14 +487,18 @@ export async function startTask() {
   starting = true;
   syncComposer();
   try {
-    if (app.env && !app.env.workbuddy.loggedIn) throw new Error(t('home.needWbLogin'));
-    if (app.env && !app.env.codex.loggedIn) throw new Error(t('home.needGptLogin'));
+    // both roles' engines must be signed in before anything starts
+    for (const role of ['lead', 'executor']) {
+      const id = engineOf(app.newSettings, role);
+      const acct = engineStatus(id);
+      if (app.env?.engines && !acct.loggedIn) throw new Error(t(acct.installed ? 'home.needSignIn' : 'home.needInstall', { name: ENGINE_NAMES[id] }));
+    }
     // !`cmd` runs the command and puts its output into the goal (snow-cli command injection)
     const injected = await expandInjections(goal, app.newDir);
     if (injected == null) return;
     goal = injected;
     const st = app.newSettings || {};
-    const run = await api('/api/runs', { method: 'POST', body: { goal, workdir: app.newDir, startAt: app.newStartAt || null, settings: { codex: st.codex, workbuddy: st.workbuddy, loop: st.loop, team: st.team, agents: st.agents, safety: st.safety } } });
+    const run = await api('/api/runs', { method: 'POST', body: { goal, workdir: app.newDir, startAt: app.newStartAt || null, settings: { roles: st.roles, codex: st.codex, claude: st.claude, deepseek: st.deepseek, workbuddy: st.workbuddy, loop: st.loop, team: st.team, agents: st.agents, safety: st.safety } } });
     composer.remember(goalEl.value.trim());
     goalEl.value = '';
     autosize(goalEl, maxGoalHeight());

@@ -132,6 +132,8 @@ export function writeMeta(id, patch = {}) {
   return m;
 }
 
+const ENGINE_NAMES = { chatgpt: 'GPT', claude: 'Claude', deepseek: 'DeepSeek', workbuddy: 'WorkBuddy' };
+
 export function listRuns() {
   ensureDirs();
   const out = [];
@@ -145,6 +147,8 @@ export function listRuns() {
       goal: s.goal,
       title: meta.title,
       pinned: meta.pinned,
+      // tasks from before roles existed: GPT led, WorkBuddy executed
+      names: { lead: ENGINE_NAMES[s.settings?.roles?.lead?.engine] || 'GPT', exec: ENGINE_NAMES[s.settings?.roles?.executor?.engine] || 'WorkBuddy' },
       workdir: s.workdir,
       status: effectiveStatus(s),
       phase: s.phase,

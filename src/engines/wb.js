@@ -22,10 +22,10 @@ export async function status(cfg) {
   return { installed: Boolean(found), loggedIn: Boolean(found) && a.loggedIn, account: a.nickname || '', version: found?.appVersion || '' };
 }
 
-export async function login(cfg, { onUpdate, signal } = {}) {
+export async function login(cfg, { onUpdate, signal, method = 'internal' } = {}) {
   const found = find(cfg);
   if (!found) throw new Error(t('srv.wb.missing'));
-  const r = await wbLogin(found, { onUpdate, signal });
+  const r = await wbLogin(found, { method, onUpdate, signal });
   return r.ok ? { ok: true, account: r.account?.userName || r.account?.nickname || '' } : { ok: false, error: r.error };
 }
 

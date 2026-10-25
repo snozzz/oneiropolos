@@ -1107,3 +1107,32 @@ html[lang="en"] .form-row { grid-template-columns: 128px minmax(0, 1fr); }
   .msg.wb.team .lanes { grid-template-columns: 1fr; }
 }
 
+
+/* ---------- engines and accounts ---------- */
+.seg.engines button { position: relative; }
+.seg.engines button.out::after, .seg.engines button.missing::after { content: ""; position: absolute; top: 4px; right: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--warn); }
+.seg.engines button.missing { color: var(--faint); }
+.warn-text { color: var(--warn); }
+.acct-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 18px; }
+.acct-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 12px; padding: 13px 16px; background: var(--surface); }
+.acct-card + .acct-card { border-top: 1px solid var(--line); }
+.acct-card .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.acct-card.on .dot { background: var(--ok); }
+.ac-main { min-width: 0; }
+.ac-name { font-size: 13.5px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.ac-role { font-size: 11px; font-weight: 400; color: var(--gold); letter-spacing: .04em; }
+.ac-sub { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-actions { display: flex; align-items: center; gap: 6px; }
+.ac-cmd { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); background: var(--surface-2); border-radius: 6px; padding: 3px 7px; user-select: all; }
+.ac-site { font-size: 12px; padding: 3px 6px; height: 28px; width: auto; }
+.ac-extra { grid-column: 2 / -1; margin-top: 8px; font-size: 12.5px; color: var(--ink-2); }
+.ac-flow { display: flex; align-items: center; gap: 6px; }
+.ac-flow.error { color: var(--err); }
+.ac-code, .ac-key .inline-add { margin-top: 8px; }
+.ac-key summary { cursor: pointer; color: var(--muted); font-size: 12px; list-style: none; }
+.ac-key summary::-webkit-details-marker { display: none; }
+details.adv { border-top: 1px solid var(--line); padding-top: 12px; }
+details.adv > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; margin-bottom: 12px; }
+details.adv > summary::-webkit-details-marker { display: none; }
+details.adv > summary::before { content: "›"; display: inline-block; width: 12px; transition: transform .15s; }
+details.adv[open] > summary::before { transform: rotate(90deg); }

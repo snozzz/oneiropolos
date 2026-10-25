@@ -1,11 +1,12 @@
-// The task view: you and GPT on the right, WorkBuddy (or its teammates) on the left; events render live.
+// The task view: you and the lead on the right, the executor (or its teammates) on the left; events render live.
 import {
   $, $$, ACTIVE, TOKEN, actions, api, app, collapsible, copyText, el, esc, firstLine, fixCollapsibles, fmtClock, fmtCtx, fmtDuration,
   fmtTime, fmtTokens, md, mdInline, msgText, oneLine, shortPath, tEffort, tPhase, tSeverity, tStatus, tVerdict, toast,
 } from './core.js';
 import { DONE_VERSE, EMBLEM, ICON, LAUREL } from './brand.js';
+import { modelName, roleLabel, roleSpec, useRoleNames } from './engines.js';
 import { autosize, enhanceComposer } from './composer.js';
-import { t } from './i18n.js';
+import { setRoleNames, t } from './i18n.js';
 import { TASK_MODES, TEAM_MODES, mountSettingsForm, readSettingsForm, wbEffortText, wbModel } from './forms.js';
 import { closeModal, closePopover, confirmDialog, menuItem, openModal, openPopover } from './overlay.js';
 import { expandInjections, openAgentsPicker, openBoard, openGitLine, openLoops, openNewPrompt, openNotebook, openReview, openSkillsPicker, openTodoPicker, openUsage, runExecuteCommand } from './tools.js';
@@ -46,6 +47,9 @@ export function openRun(id) {
   app.currentId = id;
   app.state = null;
   app.caughtUp = false;
+  // history replays right away: name the task's engines before its first line renders
+  const known = (app.runs || []).find((r) => r.id === id);
+  if (known?.names) setRoleNames(known.names);
   resetThread();
   applyDensity();
   $('#run-header').innerHTML = `<div class="chat-sub" style="padding:6px 0">${esc(t('common.loading'))}</div>`;
@@ -68,6 +72,7 @@ export function openRun(id) {
   es.addEventListener('state', (msg) => {
     if (app.es !== es) return;
     app.state = JSON.parse(msg.data);
+    useRoleNames(app.state.settings);
     ensureGoalBubble();
     renderHeader();
     renderNotice();
@@ -94,6 +99,7 @@ export function closeRun() {
   app.es = null;
   app.currentId = null;
   app.state = null;
+  useRoleNames(app.newSettings || app.env?.config);
   closeAside();
   clearInterval(approvalTimer);
   approvalTimer = null;
@@ -152,8 +158,12 @@ export function renderHeader() {
         const d = fmtDuration(isScheduled(s) ? Date.parse(s.scheduledAt) - Date.now() : elapsed);
         return d ? `<span>${esc(isScheduled(s) ? t('run.startsIn', { d }) : t('run.elapsed', { d }))}</span>` : '';
       })()}
-      <span title="${esc(`GPT: ${set.codex?.model || '-'} · ${set.codex?.effort ? tEffort(set.codex.effort) : ''}`)}">GPT ${esc(set.codex?.model || t('form.default'))}</span>
-      <span title="${esc(`WorkBuddy: ${wbModel(wbSet.model || 'auto').name} · ${wbEffortText(wbSet)}${wbSet.contextWindow ? ` · ${fmtCtx(wbSet.contextWindow)}` : ''}`)}">WorkBuddy ${esc(wbModel(wbSet.model || 'auto').name)}</span>
+      ${['lead', 'executor'].map((role) => {
+        const sp = roleSpec(set, role);
+        const name = sp.engine === 'workbuddy' ? wbModel(sp.model || 'auto').name : modelName(sp.engine, sp.model);
+        const extra = sp.engine === 'workbuddy' ? `${wbEffortText({ effort: sp.effort })}${wbSet.contextWindow ? ` · ${fmtCtx(wbSet.contextWindow)}` : ''}` : sp.effort ? tEffort(sp.effort) : '';
+        return `<span title="${esc(`${t(`role.short.${role}`)} · ${sp.name}: ${name}${extra ? ` · ${extra}` : ''}`)}">${esc(roleLabel(set, role))}</span>`;
+      }).join('')}
       ${team ? `<span class="chip-in">${ICON.team}${esc(team)}</span>` : ''}
       ${mode ? `<span class="chip-in">${esc(mode)}</span>` : ''}
       ${set.loop?.checkCommand ? `<span title="${esc(set.loop.checkCommand)}">${esc(t('run.checkOn'))}</span>` : ''}

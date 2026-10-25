@@ -5,7 +5,8 @@ import { lang, locale, t, translateDom } from './i18n.js';
 import { applyTemplate, fillTemplate, findTemplate, focusGoal, goalText, initHome, insertIntoGoal, loadTemplates, openParams, openTemplateMenu, pickFolder, pickRunSettings, renderHero, renderLede, setNewMode, setNewTeam, updateHomeChips } from './home.js';
 import { closeModal, closePalette, closePopover, modalOpen, openPalette, paletteOpen, popoverOpen } from './overlay.js';
 import { initContextMenus } from './ctxmenu.js';
-import { openGptPanel, openHelp, openSettings, openWbPanel, quotaText, registerPanels } from './panels.js';
+import { ENGINE_NAMES, ENGINE_VENDORS, engineOf, engineStatus, useRoleNames } from './engines.js';
+import { openGptPanel, openHelp, openSettings, quotaText, registerPanels } from './panels.js';
 import { applyDensity, closeRun, initThread, openAside, openRun, renderHeader, runAction, setDensity } from './thread.js';
 import { openAgentsPicker, openGitLine, openLoops, openNewPrompt, openNotebook, openReview, openSkillsPicker, openTodoPicker, openUsage, runExecuteCommand } from './tools.js';
 
@@ -30,17 +31,24 @@ function setAccount(btn, ok, text, { low = false, title = '' } = {}) {
   btn.title = title;
 }
 
+/** The two engines the next task will use (lead, executor), with their sign-in state; one chip when they are the same. */
 function renderAccounts() {
-  if (!app.env) return;
-  const { codex, workbuddy } = app.env;
-  const q = app.quota;
-  const left = q ? Math.min(...[q.primary, q.secondary].filter(Boolean).map((w) => 100 - w.usedPercent)) : 100;
-  const quota = codex.loggedIn && q ? quotaText(q) : '';
-  setAccount($('#chip-gpt'), codex.loggedIn, codex.installed ? (codex.loggedIn ? quota || (codex.chatgpt ? t('acct.chatgpt') : t('acct.loggedIn')) : t('acct.notLoggedIn')) : t('acct.notInstalled'), {
-    low: Boolean(quota) && left <= 15,
-    title: q ? t('acct.gptTitleQuota', { quota }) : t('acct.gptTitle'),
+  if (!app.env?.engines) return;
+  const st = app.newSettings || app.env.config;
+  const ids = [engineOf(st, 'lead'), engineOf(st, 'executor')];
+  ['#chip-lead', '#chip-exec'].forEach((sel, i) => {
+    const btn = $(sel);
+    const id = ids[i];
+    btn.classList.toggle('hidden', i === 1 && ids[0] === ids[1]);
+    const a = engineStatus(id);
+    $('.name', btn).textContent = ENGINE_NAMES[id];
+    const q = id === 'chatgpt' ? app.quota : null;
+    const quota = a.loggedIn && q ? quotaText(q) : '';
+    const left = q ? Math.min(...[q.primary, q.secondary].filter(Boolean).map((w) => 100 - w.usedPercent)) : 100;
+    const text = !a.installed ? t('acct.notInstalled') : !a.loggedIn ? t('acct.notLoggedIn') : quota || a.account || t('acct.loggedIn');
+    const role = i === 0 && ids[0] !== ids[1] ? t('role.short.lead') : i === 1 ? t('role.short.executor') : `${t('role.short.lead')} · ${t('role.short.executor')}`;
+    setAccount(btn, a.loggedIn, text, { low: Boolean(quota) && left <= 15, title: `${role} · ${ENGINE_VENDORS[id]}${a.plan ? ` · ${a.plan}` : ''}` });
   });
-  setAccount($('#chip-wb'), workbuddy.loggedIn, workbuddy.installed ? (workbuddy.loggedIn ? workbuddy.nickname || t('acct.loggedIn') : t('acct.notLoggedIn')) : t('acct.notInstalled'), { title: 'WorkBuddy' });
 }
 
 async function refreshEnv() {
@@ -51,13 +59,14 @@ async function refreshEnv() {
     return;
   }
   if (!app.newSettings) app.newSettings = pickRunSettings(app.env.config);
+  if (!app.currentId) useRoleNames(app.newSettings);
   renderAccounts();
   updateHomeChips();
   applyDensity();
 }
 
 async function refreshQuota(force = false) {
-  if (!app.env?.codex?.loggedIn) return;
+  if (!app.env?.engines?.chatgpt?.loggedIn) return;
   try {
     app.quota = (await api(`/api/quota${force ? '?force=1' : ''}`)).quota;
   } catch {
@@ -76,8 +85,8 @@ async function refreshCommands() {
   }
 }
 
-$('#chip-gpt').onclick = openGptPanel;
-$('#chip-wb').onclick = openWbPanel;
+$('#chip-lead').onclick = () => openSettings('accounts');
+$('#chip-exec').onclick = () => openSettings('accounts');
 $('#btn-settings').onclick = () => openSettings();
 $('#btn-help').onclick = openHelp;
 
@@ -190,8 +199,8 @@ function openCommandPalette() {
       { group: g, icon: 'globe', title: 'Language: English', keys: 'language english yuyan', run: () => setLanguage('en') },
       { group: g, icon: 'globe', title: '语言：中文', keys: 'language chinese zhongwen yuyan', run: () => setLanguage('zh') },
       { group: g, icon: 'globe', title: '言語：日本語', keys: 'language japanese nihongo', run: () => setLanguage('ja') },
-      { group: g, icon: 'key', title: t('palette.gpt'), keys: 'gpt quota edu', run: openGptPanel },
-      { group: g, icon: 'key', title: t('palette.wb'), keys: 'workbuddy login', run: openWbPanel },
+      { group: g, icon: 'key', title: t('settings.accounts'), keys: 'accounts login sign in zhanghu denglu gpt claude deepseek workbuddy', run: () => openSettings('accounts') },
+      { group: g, icon: 'chart', title: t('palette.gpt'), keys: 'gpt quota edu', run: openGptPanel },
     );
     for (const r of app.runs.slice(0, 80)) {
       items.push({ group: t('palette.tasks'), icon: ACTIVE.has(r.status) ? 'play' : r.status === 'done' ? 'check' : 'scroll', title: firstLine(r.goal, 70), hint: `${tStatus(r.status)} · ${fmtRelative(r.updatedAt)}`, keys: `${r.workdir} ${oneLine(r.goal, 300)}`, run: () => { location.hash = `#run/${r.id}`; } });

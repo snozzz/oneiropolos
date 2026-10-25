@@ -469,6 +469,8 @@ async function withServe(found, fn, { signal } = {}) {
 }
 
 export function openUrl(url) {
+  // WBLOOP_NO_OPEN=1 (tests, headless checks): never pop a browser or Finder window
+  if (process.env.WBLOOP_NO_OPEN) return;
   spawn('/usr/bin/open', [url], { stdio: 'ignore', detached: true }).unref();
 }
 

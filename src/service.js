@@ -48,7 +48,7 @@ function publicSignIn(id) {
 }
 
 /** Starts an engine's own sign-in (browser); one attempt per engine at a time. */
-export function startSignIn(id) {
+export function startSignIn(id, opts = {}) {
   const eng = engine(id);
   if (!eng) throw new Error(`unknown engine: ${id}`);
   const cur = signIns.get(id);
@@ -57,7 +57,7 @@ export function startSignIn(id) {
   const job = { state: 'starting', startedAt: new Date().toISOString(), ctrl };
   signIns.set(id, job);
   Promise.resolve()
-    .then(() => eng.login(loadConfig(), { signal: ctrl.signal, onUpdate: (u) => Object.assign(job, u) }))
+    .then(() => eng.login(loadConfig(), { ...opts, signal: ctrl.signal, onUpdate: (u) => Object.assign(job, u) }))
     .then((r) => Object.assign(job, r?.ok ? { state: 'done', account: r.account || '' } : { state: ctrl.signal.aborted ? 'cancelled' : 'error', message: r?.error || '' }))
     .catch((err) => Object.assign(job, { state: 'error', message: err.message }))
     .finally(() => {

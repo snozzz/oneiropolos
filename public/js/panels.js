@@ -2,6 +2,7 @@
 import { $, $$, ACTIVE, actions, api, app, applyTheme, armButton, esc, fmtClock, fmtDuration, fmtRelative, fmtTime, native, oneLine, toast } from './core.js';
 import { BRAND, EMBLEM, ICON } from './brand.js';
 import { LANGS, lang, t } from './i18n.js';
+import { ENGINE_IDS, ENGINE_VENDORS, engineOf, engineStatus } from './engines.js';
 import { REPLY_LANGS, SAFETY_POLICIES, bindSeg, formGroup, formRow, gptModelList, mountSettingsForm, numberControl, readSettingsForm, seg, segValue, switchControl } from './forms.js';
 import { closeModal, confirmDialog, openModal } from './overlay.js';
 import { applyDensity } from './thread.js';
@@ -10,6 +11,7 @@ import { openLoops, openUsage } from './tools.js';
 // ---------- settings ----------
 const SETTING_TABS = [
   { id: 'general', icon: 'globe' },
+  { id: 'accounts', icon: 'key' },
   { id: 'defaults', icon: 'sliders' },
   { id: 'prompts', icon: 'prompt' },
   { id: 'agents', icon: 'agents' },
@@ -50,6 +52,13 @@ export async function openSettings(tab = 'general') {
         formRow(t('settings.theme'), seg('s-theme', [['system', t('settings.themeSystem')], ['light', t('settings.themeLight')], ['dark', t('settings.themeDark')]], theme), { hint: t('settings.themeHint') }),
         formRow(t('settings.density'), seg('s-density', [['full', t('density.full')], ['compact', t('density.compact')], ['hidden', t('density.hidden')]], density), { hint: t('settings.densityHint') }),
       ])}`,
+    accounts: `<div class="pane-title">${esc(t('settings.accounts'))}</div><p class="pane-lede">${esc(t('settings.accountsLede'))}</p>
+      <div class="acct-list" id="s-acct-list"></div>
+      <details class="adv"><summary>${esc(t('acct.advanced'))}</summary>
+        ${formRow(t('form.codexHome'), `<input type="text" id="s-codex-home" value="${esc(cfg.codex?.home || '')}" placeholder="~/.codex" spellcheck="false">`, { forId: 's-codex-home', hint: t('form.codexHomeHint') })}
+        ${formRow(t('form.gptContext'), numberControl('s-codex-ctx', cfg.codex?.contextWindow || 0, t('form.tokens'), 0), { forId: 's-codex-ctx', hint: t('form.gptContextHint') })}
+        ${formRow(t('acct.claudeHome'), `<input type="text" id="s-claude-home" value="${esc(cfg.claude?.home || '')}" placeholder="~/.wbloop/claude-home" spellcheck="false">`, { forId: 's-claude-home', hint: t('acct.claudeHomeHint') })}
+      </details>`,
     defaults: `<div class="pane-title">${esc(t('settings.defaults'))}</div><p class="pane-lede">${esc(t('settings.defaultsLede'))}</p><div id="s-form"></div>
       <div class="form-group"><div class="group-title">${esc(t('profiles.title'))}<span class="gt-side">${esc(t('profiles.side'))}</span></div><div id="s-profiles"></div>
         <div class="inline-add"><input type="text" id="s-prof-name" placeholder="${esc(t('profiles.namePlaceholder'))}" autocomplete="off"><button class="btn sm" type="button" id="s-prof-save">${esc(t('profiles.save'))}</button></div></div>`,
@@ -166,6 +175,8 @@ export async function openSettings(tab = 'general') {
     applyDensity();
     api('/api/config', { method: 'PUT', body: { ui: { density: v } } }).catch((err) => toast(err.message));
   });
+
+  mountAccounts($('#s-acct-list', body));
 
   // profiles
   const renderProfiles = () => {
@@ -512,7 +523,10 @@ export async function openSettings(tab = 'general') {
       await api('/api/config', {
         method: 'PUT',
         body: {
-          codex: st.codex,
+          roles: st.roles,
+          codex: { ...st.codex, home: $('#s-codex-home', body).value.trim(), contextWindow: num('s-codex-ctx', 0, 0) },
+          claude: { ...(st.claude || {}), home: $('#s-claude-home', body).value.trim() },
+          deepseek: st.deepseek || {},
           workbuddy: {
             ...st.workbuddy,
             maxTurnsPerCall: num('s-turns', cfg.workbuddy.maxTurnsPerCall),
@@ -541,6 +555,150 @@ export async function openSettings(tab = 'general') {
       toast(err.message);
     }
   };
+}
+
+// ---------- accounts: every engine signs in on its own ----------
+
+const INSTALL = {
+  chatgpt: { cmd: 'npm i -g @openai/codex' },
+  claude: { cmd: 'npm i -g @anthropic-ai/claude-code' },
+  deepseek: { url: 'https://harness.deepseek.com' },
+  workbuddy: { url: 'https://www.codebuddy.cn/work/' },
+};
+let acctPoll = null;
+
+function rolesUsing(id) {
+  const st = app.env?.config;
+  return ['lead', 'executor'].filter((r) => engineOf(st, r) === id).map((r) => t(`role.short.${r}`));
+}
+
+function acctCard(id, flow) {
+  const st = engineStatus(id);
+  const roles = rolesUsing(id);
+  let sub;
+  if (!st.installed) sub = `<span class="muted">${esc(t('acct.notInstalled'))}</span>`;
+  else if (st.loggedIn) sub = esc([st.account, st.plan, id === 'chatgpt' && app.quota ? quotaText(app.quota) : ''].filter(Boolean).join(' · ') || t('acct.loggedIn'));
+  else sub = `<span class="muted">${esc(t('acct.notLoggedIn'))}</span>`;
+  let action = '';
+  if (!st.installed) {
+    action = INSTALL[id].cmd ? `<code class="ac-cmd">${esc(INSTALL[id].cmd)}</code>` : `<button class="btn sm" type="button" data-ac-open="${esc(INSTALL[id].url)}">${esc(t('acct.get'))}</button>`;
+  } else if (flow && ['starting', 'waiting'].includes(flow.state)) {
+    action = `<button class="btn sm" type="button" data-ac-cancel="${id}">${esc(t('common.cancel'))}</button>`;
+  } else if (st.loggedIn) {
+    action = `${id === 'chatgpt' ? `<button class="btn ghost sm" type="button" data-ac-quota>${esc(t('acct.quota'))}</button>` : ''}<button class="btn ghost sm" type="button" data-ac-out="${id}">${esc(t('acct.signOut'))}</button>`;
+  } else {
+    action = `${id === 'workbuddy' ? `<select class="ac-site" id="ac-wb-site"><option value="internal">${esc(t('wb.siteChina'))}</option><option value="external">${esc(t('wb.siteIntl'))}</option></select>` : ''}<button class="btn sm primary" type="button" data-ac-in="${id}">${esc(t('acct.signIn'))}</button>`;
+  }
+  let extra = '';
+  if (flow?.state === 'starting') extra = `<div class="ac-flow"><span class="spinner"></span> ${esc(t('acct.opening'))}</div>`;
+  else if (flow?.state === 'waiting') {
+    extra = `<div class="ac-flow"><span class="spinner"></span> ${esc(t('acct.waiting'))}${flow.authUrl ? ` <button class="link" type="button" data-ac-open="${esc(flow.authUrl)}">${esc(t('acct.openAgain'))}</button>` : ''}</div>
+      ${flow.canPaste ? `<div class="inline-add ac-code"><input type="text" id="ac-code" placeholder="${esc(t('acct.codePlaceholder'))}" autocomplete="off" spellcheck="false"><button class="btn sm" type="button" data-ac-code>${esc(t('acct.codeSend'))}</button></div>` : ''}`;
+  } else if (flow?.state === 'error') extra = `<div class="ac-flow error">${esc(flow.message || t('acct.failed'))}</div>`;
+  if (id === 'deepseek' && st.installed && !st.loggedIn && !(flow && ['starting', 'waiting'].includes(flow.state))) {
+    extra += `<details class="ac-key"><summary>${esc(t('acct.useKey'))}</summary><div class="inline-add"><input type="password" id="ac-ds-key" placeholder="sk-…" autocomplete="off" spellcheck="false"><button class="btn sm" type="button" data-ac-key>${esc(t('common.save'))}</button></div></details>`;
+  }
+  return `<div class="acct-card${st.loggedIn ? ' on' : ''}" data-engine="${id}">
+    <span class="dot"></span>
+    <div class="ac-main"><div class="ac-name">${esc(ENGINE_VENDORS[id])}${roles.map((r) => `<span class="ac-role">${esc(r)}</span>`).join('')}</div><div class="ac-sub">${sub}</div></div>
+    <div class="ac-actions">${action}</div>
+    ${extra ? `<div class="ac-extra">${extra}</div>` : ''}
+  </div>`;
+}
+
+/** The engine list of the Accounts pane; it polls while a sign-in is in progress and refreshes when one ends. */
+export function mountAccounts(box) {
+  const flows = {};
+  const render = () => {
+    if (!box.isConnected) return;
+    box.innerHTML = ENGINE_IDS.map((id) => acctCard(id, flows[id])).join('');
+  };
+  const refresh = async () => {
+    try {
+      app.env.engines = await api('/api/accounts?force=1');
+    } catch {
+      // keep the last state
+    }
+    actions.renderAccounts?.();
+    render();
+  };
+  const poll = () => {
+    clearInterval(acctPoll);
+    acctPoll = setInterval(async () => {
+      if (!box.isConnected) {
+        clearInterval(acctPoll);
+        return;
+      }
+      const busy = Object.keys(flows).filter((id) => ['starting', 'waiting'].includes(flows[id]?.state));
+      if (!busy.length) {
+        clearInterval(acctPoll);
+        return;
+      }
+      for (const id of busy) {
+        const job = await api(`/api/accounts/${id}/login`).catch(() => null);
+        if (!job) continue;
+        const had = flows[id]?.state;
+        // keep a half-typed code across redraws
+        const typed = $('#ac-code', box)?.value || '';
+        flows[id] = job;
+        if (job.state === 'done') {
+          flows[id] = null;
+          toast(t('acct.signedIn', { name: ENGINE_VENDORS[id] }));
+          await refresh();
+        } else if (job.state !== had || job.state !== 'waiting') {
+          render();
+          if (typed && $('#ac-code', box)) $('#ac-code', box).value = typed;
+        }
+      }
+    }, 1500);
+  };
+  box.onclick = async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    try {
+      if (b.dataset.acIn) {
+        const id = b.dataset.acIn;
+        const body = id === 'workbuddy' ? { method: $('#ac-wb-site', box)?.value || 'internal' } : {};
+        flows[id] = await api(`/api/accounts/${id}/login`, { method: 'POST', body });
+        render();
+        poll();
+      } else if (b.dataset.acCancel) {
+        flows[b.dataset.acCancel] = await api(`/api/accounts/${b.dataset.acCancel}/login`, { method: 'DELETE' });
+        flows[b.dataset.acCancel] = null;
+        render();
+      } else if (b.dataset.acOut) {
+        const id = b.dataset.acOut;
+        if (!(await confirmDialog({ title: t('acct.signOutTitle', { name: ENGINE_VENDORS[id] }), ok: t('acct.signOut'), danger: true }))) return;
+        app.env.engines = await api(`/api/accounts/${id}/logout`, { method: 'POST', body: {} });
+        actions.renderAccounts?.();
+        render();
+      } else if (b.dataset.acOpen) {
+        await api('/api/open', { method: 'POST', body: { path: b.dataset.acOpen } });
+      } else if ('acCode' in b.dataset) {
+        const code = $('#ac-code', box)?.value.trim();
+        if (code) await api('/api/accounts/claude/code', { method: 'POST', body: { code } });
+      } else if ('acKey' in b.dataset) {
+        const key = $('#ac-ds-key', box)?.value.trim();
+        if (!key) return;
+        app.env.engines = await api('/api/accounts/deepseek/key', { method: 'POST', body: { key } });
+        actions.renderAccounts?.();
+        render();
+      } else if ('acQuota' in b.dataset) {
+        openGptPanel();
+      }
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+  render();
+  // pick up sign-ins already running (e.g. started from the sidebar)
+  Promise.all(ENGINE_IDS.map(async (id) => {
+    const job = await api(`/api/accounts/${id}/login`).catch(() => null);
+    if (job && ['starting', 'waiting'].includes(job.state)) flows[id] = job;
+  })).then(() => {
+    render();
+    poll();
+  });
 }
 
 // ---------- GPT: login and quota ----------

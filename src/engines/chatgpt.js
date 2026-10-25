@@ -56,7 +56,7 @@ export function defaultModel(cfg) {
   return defaultCodexModel(homeOf(cfg));
 }
 
-export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
 export async function quota(cfg) {
   return codexRateLimitsLive(find(cfg), { home: homeOf(cfg) }).catch(() => null);

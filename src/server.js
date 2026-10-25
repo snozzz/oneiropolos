@@ -280,7 +280,10 @@ async function route(req, res, url) {
   if (pathname === '/api/accounts' && method === 'GET') return sendJson(res, 200, await svc.engineStatus({ force: url.searchParams.get('force') === '1' }));
   if ((m = pathname.match(/^\/api\/accounts\/(chatgpt|claude|deepseek|workbuddy)\/(login|logout|code|key)$/))) {
     const [, id, act] = m;
-    if (act === 'login' && method === 'POST') return sendJson(res, 200, svc.startSignIn(id));
+    if (act === 'login' && method === 'POST') {
+      const body = await readBody(req);
+      return sendJson(res, 200, svc.startSignIn(id, { method: body.method === 'external' ? 'external' : 'internal' }));
+    }
     if (act === 'login' && method === 'GET') return sendJson(res, 200, svc.getSignIn(id));
     if (act === 'login' && method === 'DELETE') return sendJson(res, 200, svc.cancelSignIn(id));
     if (act === 'logout' && method === 'POST') return sendJson(res, 200, await svc.signOut(id));

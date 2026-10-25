@@ -1,5 +1,6 @@
 // The model and run settings form (shared by a new task, "adjust this task" and the defaults), and the start-time picker.
-import { $, $$, api, app, esc, fmtClock, fmtCtx, fmtNum, fmtTime, merge, oneLine, tEffort, toast } from './core.js';
+import { $, $$, actions, api, app, esc, fmtClock, fmtCtx, fmtNum, fmtTime, merge, oneLine, tEffort, toast } from './core.js';
+import { ENGINE_IDS, ENGINE_NAMES, ENGINE_SECTION, ENGINE_VENDORS, engineEfforts, engineModels, engineStatus, modelName, roleSpec } from './engines.js';
 import { EMBLEM, ICON } from './brand.js';
 import { t } from './i18n.js';
 import { closePopover, openPopover } from './overlay.js';
@@ -82,39 +83,55 @@ export const TASK_MODES = () => [['normal', t('mode.normal')], ['plan', t('mode.
 export const REPLY_LANGS = () => [['auto', t('replyLang.auto')], ['en', 'English'], ['zh', '中文'], ['ja', '日本語']];
 export const SAFETY_POLICIES = () => [['ask', t('safety.policy.ask')], ['deny', t('safety.policy.deny')], ['allow', t('safety.policy.allow')]];
 
-function settingsFormHtml(p, st, opts = {}) {
-  const gptModel = st.codex?.model || app.env?.codex.defaultModel || '';
-  const gptList = gptModelList();
-  if (gptModel && !gptList.some((m) => m.id === gptModel)) gptList.unshift({ id: gptModel, name: gptModel });
-  const gptOptions = gptList.map((m) => `<option value="${esc(m.id)}"${m.id === gptModel ? ' selected' : m.unavailable ? ' disabled' : ''}>${esc(m.name || m.id)}${m.unavailable ? ` ${esc(t('form.unavailable'))}` : ''}</option>`).join('');
-  const wbId = st.workbuddy?.model || 'auto';
-  const wbList = [...wbModelList()];
-  if (!wbList.some((m) => m.id === wbId)) wbList.push(wbModel(wbId));
-  const wbOptions = wbList.map((m) => {
-    const extra = [creditsLabel(m), m.badges?.[0]?.label].filter(Boolean).join(' · ');
-    return `<option value="${esc(m.id)}"${m.id === wbId ? ' selected' : ''}>${esc(m.name)}${extra ? `　${esc(extra)}` : ''}</option>`;
-  }).join('');
+// ---------- the two roles: an engine, a model and an effort each ----------
+
+const ROLE_PREFIX = { lead: 'lead', executor: 'exec' };
+
+function modelOptions(engineId, current) {
+  let list;
+  if (engineId === 'chatgpt') list = gptModelList().map((m) => ({ ...m, label: `${m.name || m.id}${m.unavailable ? ` ${t('form.unavailable')}` : ''}` }));
+  else if (engineId === 'workbuddy') list = wbModelList().map((m) => ({ ...m, label: [m.name, [creditsLabel(m), m.badges?.[0]?.label].filter(Boolean).join(' · ')].filter(Boolean).join('　') }));
+  else list = engineModels(engineId).map((m) => ({ ...m, label: m.id ? m.name : t('form.accountDefault') }));
+  if (current && !list.some((m) => m.id === current)) list.unshift({ id: current, label: current });
+  return list.map((m) => `<option value="${esc(m.id)}"${m.id === current ? ' selected' : m.unavailable ? ' disabled' : ''}>${esc(m.label)}</option>`).join('');
+}
+
+function engineSeg(id, current) {
+  return `<div class="seg engines" id="${id}">${ENGINE_IDS.map((e) => {
+    const st = engineStatus(e);
+    const off = !st.installed ? ' missing' : !st.loggedIn ? ' out' : '';
+    return `<button type="button" data-v="${e}" class="${e === current ? 'on' : ''}${off}" title="${esc(!st.installed ? t('acct.notInstalled') : !st.loggedIn ? t('acct.notLoggedIn') : st.account || ENGINE_VENDORS[e])}">${esc(ENGINE_NAMES[e])}</button>`;
+  }).join('')}</div>`;
+}
+
+function roleGroup(role, p, st, opts) {
+  const r = ROLE_PREFIX[role];
+  const spec = roleSpec(st, role);
   const perm = st.workbuddy?.permissionMode === 'fullAccess' ? 'fullAccess' : 'bypassPermissions';
+  const rows = [
+    formRow(t('form.engine'), engineSeg(`${p}-${r}-engine`, spec.engine), { hintKey: `${r}-engine` }),
+    formRow(t('form.model'), `<select id="${p}-${r}-model">${modelOptions(spec.engine, spec.model)}</select>`, { forId: `${p}-${r}-model`, hintKey: `${r}-model` }),
+    formRow(t('form.reasoning'), `<select id="${p}-${r}-effort"></select>`, { forId: `${p}-${r}-effort`, hintKey: `${r}-effort` }),
+  ];
+  if (role === 'lead') {
+    rows.push(`<div data-only="${p}-lead:chatgpt">${formRow(t('form.webSearch'), switchControl(`${p}-web`, Boolean(st.codex?.webSearch), t('form.webSearchSwitch')))}</div>`);
+  } else {
+    rows.push(`<div data-only="${p}-exec:workbuddy">${formRow(t('form.context'), `<select id="${p}-wb-ctx"></select>`, { forId: `${p}-wb-ctx`, hintKey: 'wb-ctx' })}${opts.perm ? formRow(t('form.permission'), `<select id="${p}-perm">${option('bypassPermissions', t('form.permBypass'), perm)}${option('fullAccess', t('form.permFull'), perm)}</select>`, { forId: `${p}-perm`, hint: t('form.permHint') }) : ''}</div>`);
+    rows.push(formRow(t('form.addDirs'), `<textarea id="${p}-dirs" rows="2" spellcheck="false" placeholder="${esc(t('form.addDirsPlaceholder'))}">${esc((st.workbuddy?.addDirs || []).join('\n'))}</textarea>`, { forId: `${p}-dirs`, hint: t('form.addDirsHint') }));
+  }
+  const side = role === 'executor' && app.env?.workbuddy?.loggedIn ? `<span class="gt-side" data-only="${p}-exec:workbuddy">${esc(modelsSourceText())} · <button class="link" type="button" data-refresh-models>${esc(t('form.refresh'))}</button></span>` : '';
+  return formGroup(`${t(role === 'lead' ? 'form.leadGroup' : 'form.execGroup')}${side}`, rows, { emblem: role === 'lead' ? 'gpt' : 'wb' });
+}
+
+function settingsFormHtml(p, st, opts = {}) {
   const autonomy = st.loop?.autonomy === 'ask' ? 'ask' : 'auto';
   const teamMode = ['auto', 'always'].includes(st.team?.mode) ? st.team.mode : 'off';
   const taskMode = ['plan', 'vuln'].includes(st.agents?.mode) ? st.agents.mode : 'normal';
   const reply = ['en', 'zh', 'ja'].includes(st.agents?.replyLanguage) ? st.agents.replyLanguage : 'auto';
   const policy = ['deny', 'allow'].includes(st.safety?.policy) ? st.safety.policy : 'ask';
   return [
-    formGroup(t('form.gptGroup'), [
-      formRow(t('form.model'), `<select id="${p}-gpt-model">${gptOptions}</select>`, { forId: `${p}-gpt-model`, hintKey: 'gpt-model' }),
-      formRow(t('form.reasoning'), `<select id="${p}-gpt-effort"></select>`, { forId: `${p}-gpt-effort`, hint: t('form.reasoningHint') }),
-      formRow(t('form.webSearch'), switchControl(`${p}-web`, Boolean(st.codex?.webSearch), t('form.webSearchSwitch')), { hint: t('form.webSearchHint') }),
-      formRow(t('form.codexHome'), `<input type="text" id="${p}-codex-home" value="${esc(st.codex?.home || '')}" placeholder="~/.codex" spellcheck="false">`, { forId: `${p}-codex-home`, hint: t('form.codexHomeHint') }),
-      formRow(t('form.gptContext'), numberControl(`${p}-codex-ctx`, st.codex?.contextWindow || 0, t('form.tokens')), { forId: `${p}-codex-ctx`, hint: t('form.gptContextHint') }),
-    ], { emblem: 'gpt' }),
-    formGroup(`${t('form.wbGroup')}<span class="gt-side">${esc(modelsSourceText())}${app.env?.workbuddy.loggedIn ? ` · <button class="link" type="button" data-refresh-models>${esc(t('form.refresh'))}</button>` : ''}</span>`, [
-      formRow(t('form.model'), `<select id="${p}-wb-model">${wbOptions}</select>`, { forId: `${p}-wb-model`, hintKey: 'wb-model' }),
-      formRow(t('form.thinking'), `<select id="${p}-wb-effort"></select>`, { forId: `${p}-wb-effort`, hintKey: 'wb-effort' }),
-      formRow(t('form.context'), `<select id="${p}-wb-ctx"></select>`, { forId: `${p}-wb-ctx`, hintKey: 'wb-ctx' }),
-      opts.perm ? formRow(t('form.permission'), `<select id="${p}-perm">${option('bypassPermissions', t('form.permBypass'), perm)}${option('fullAccess', t('form.permFull'), perm)}</select>`, { forId: `${p}-perm`, hint: t('form.permHint') }) : '',
-      formRow(t('form.addDirs'), `<textarea id="${p}-dirs" rows="2" spellcheck="false" placeholder="${esc(t('form.addDirsPlaceholder'))}">${esc((st.workbuddy?.addDirs || []).join('\n'))}</textarea>`, { forId: `${p}-dirs`, hint: t('form.addDirsHint') }),
-    ], { emblem: 'wb' }),
+    roleGroup('lead', p, st, opts),
+    roleGroup('executor', p, st, opts),
     formGroup(t('form.collabGroup'), [
       formRow(t('form.team'), `${seg(`${p}-team`, TEAM_MODES(), teamMode)}<div class="unit" style="margin-top:8px"><span>${esc(t('form.maxTeammates'))}</span><input id="${p}-mates" type="number" min="2" max="6" value="${Number(st.team?.maxTeammates) || 3}" style="width:80px"></div>`, { hint: t('form.teamHint') }),
       formRow(t('form.mode'), `<select id="${p}-mode">${TASK_MODES().map(([v, l]) => option(v, l, taskMode)).join('')}</select>`, { forId: `${p}-mode`, hint: t('form.modeHint') }),
@@ -139,55 +156,87 @@ function setHint(root, key, html) {
   if (box) box.innerHTML = html || '';
 }
 
-function bindSettingsForm(root, p, st, onChange) {
-  const gptSel = $(`#${p}-gpt-model`, root);
-  const gptEff = $(`#${p}-gpt-effort`, root);
-  const wbSel = $(`#${p}-wb-model`, root);
-  const wbEff = $(`#${p}-wb-effort`, root);
-  const wbCtx = $(`#${p}-wb-ctx`, root);
-  const syncGpt = (want) => {
-    const m = gptModelList().find((x) => x.id === gptSel.value);
-    const levels = (m?.efforts || []).filter((e) => [...GPT_EFFORTS, 'minimal', 'ultra'].includes(e));
-    const list = levels.length ? levels : GPT_EFFORTS;
-    const cur = want ?? gptEff.value;
-    gptEff.innerHTML = list.map((e) => `<option value="${e}">${esc(effortLabel(e))}</option>`).join('');
-    gptEff.value = list.includes(cur) ? cur : list.includes('high') ? 'high' : list[list.length - 1];
-    setHint(root, 'gpt-model', m ? esc([m.description && oneLine(m.description, 90), m.contextWindow ? t('form.contextOf', { n: fmtCtx(m.contextWindow) || m.contextWindow }) : ''].filter(Boolean).join(' · ')) : '');
-  };
-  const syncWb = (wantEffort, wantCtx) => {
-    const m = wbModel(wbSel.value);
-    const curEffort = wantEffort ?? wbEff.value;
-    const curCtx = String(wantCtx ?? wbCtx.value);
+function fillEfforts(sel, engineId, modelId, want) {
+  sel.disabled = false;
+  if (engineId === 'workbuddy') {
+    const m = wbModel(modelId);
     if (!m.reasoning) {
-      wbEff.innerHTML = `<option value="">${esc(t('form.notAdjustable'))}</option>`;
-      wbEff.disabled = true;
-    } else {
-      wbEff.disabled = false;
-      const options = [...m.efforts, ...(m.canDisableThinking ? ['off'] : [])];
-      const def = m.defaultEffort ? t('form.defaultOf', { v: tEffort(m.defaultEffort) }) : t('form.default');
-      wbEff.innerHTML = `<option value="">${esc(def)}</option>${options.map((e) => `<option value="${e}">${esc(e === 'off' ? tEffort('off') : effortLabel(e))}</option>`).join('')}`;
-      wbEff.value = options.includes(curEffort) ? curEffort : '';
+      sel.innerHTML = `<option value="">${esc(t('form.notAdjustable'))}</option>`;
+      sel.disabled = true;
+      return;
     }
-    if (m.context) {
+    const options = [...m.efforts, ...(m.canDisableThinking ? ['off'] : [])];
+    const def = m.defaultEffort ? t('form.defaultOf', { v: tEffort(m.defaultEffort) }) : t('form.default');
+    sel.innerHTML = `<option value="">${esc(def)}</option>${options.map((e) => `<option value="${e}">${esc(e === 'off' ? tEffort('off') : effortLabel(e))}</option>`).join('')}`;
+    sel.value = options.includes(want) ? want : '';
+    return;
+  }
+  const model = (engineId === 'chatgpt' ? gptModelList() : engineModels(engineId)).find((x) => x.id === modelId);
+  const levels = (model?.efforts?.length ? model.efforts : engineEfforts(engineId)).filter(Boolean);
+  const list = levels.length ? levels : GPT_EFFORTS;
+  const withDefault = engineId === 'claude';
+  sel.innerHTML = `${withDefault ? `<option value="">${esc(t('form.default'))}</option>` : ''}${list.map((e) => `<option value="${e}">${esc(e === 'off' ? tEffort('off') : effortLabel(e))}</option>`).join('')}`;
+  const fallback = withDefault ? '' : model?.defaultEffort && list.includes(model.defaultEffort) ? model.defaultEffort : list.includes('high') ? 'high' : list[list.length - 1];
+  sel.value = list.includes(want) ? want : fallback;
+}
+
+function engineHint(id) {
+  const st = engineStatus(id);
+  if (!st.installed) return `<span class="warn-text">${esc(t('acct.notInstalled'))}</span> · <button class="link" type="button" data-open-accounts>${esc(t('settings.accounts'))}</button>`;
+  if (!st.loggedIn) return `<span class="warn-text">${esc(t('acct.notLoggedIn'))}</span> · <button class="link" type="button" data-open-accounts>${esc(t('acct.signIn'))}</button>`;
+  return esc([st.account, st.plan].filter(Boolean).join(' · '));
+}
+
+function bindSettingsForm(root, p, st, onChange) {
+  const syncRole = (role, { effort, keepModel = true } = {}) => {
+    const r = ROLE_PREFIX[role];
+    const engineId = segValue(root, `${p}-${r}-engine`);
+    const sel = $(`#${p}-${r}-model`, root);
+    const eff = $(`#${p}-${r}-effort`, root);
+    if (!keepModel) {
+      const spec = roleSpec(merge(st, { roles: { [role]: { engine: engineId, model: '', effort: '' } } }), role);
+      sel.innerHTML = modelOptions(engineId, spec.model);
+      effort = spec.effort;
+    }
+    fillEfforts(eff, engineId, sel.value, effort ?? eff.value);
+    $$(`[data-only^="${p}-${r}:"]`, root).forEach((x) => x.classList.toggle('hidden', x.dataset.only !== `${p}-${r}:${engineId}`));
+    setHint(root, `${r}-engine`, engineHint(engineId));
+    if (engineId === 'workbuddy') {
+      const m = wbModel(sel.value);
+      const badges = (m.badges || []).map((b) => `<span class="badge${b.kind === 'tier' ? ' tier' : ''}" title="${esc(b.text)}">${esc(b.label)}</span>`).join('');
+      const next = m.nextDiscount ? t('form.nextDiscount', { label: m.nextDiscount.label || t('form.discount'), time: fmtClock(m.nextDiscount.at) }) : '';
+      setHint(root, `${r}-model`, [badges, esc([m.description, next].filter(Boolean).join(' · '))].join(' '));
+    } else {
+      const m = (engineId === 'chatgpt' ? gptModelList() : engineModels(engineId)).find((x) => x.id === sel.value);
+      setHint(root, `${r}-model`, m ? esc([m.description && oneLine(m.description, 90), m.contextWindow ? t('form.contextOf', { n: fmtCtx(m.contextWindow) || m.contextWindow }) : ''].filter(Boolean).join(' · ')) : '');
+    }
+    if (role === 'executor') syncCtx();
+  };
+  const wbCtx = $(`#${p}-wb-ctx`, root);
+  const syncCtx = (want) => {
+    const m = wbModel($(`#${p}-exec-model`, root).value);
+    const cur = String(want ?? wbCtx.value);
+    if (segValue(root, `${p}-exec-engine`) === 'workbuddy' && m.context) {
       wbCtx.disabled = false;
       wbCtx.innerHTML = `<option value="">${esc(t('form.defaultOf', { v: fmtCtx(m.context.default) }))}</option>${m.context.options.map((n) => `<option value="${n}">${fmtCtx(n)}</option>`).join('')}`;
-      wbCtx.value = m.context.options.map(String).includes(curCtx) ? curCtx : '';
+      wbCtx.value = m.context.options.map(String).includes(cur) ? cur : '';
     } else {
       wbCtx.innerHTML = `<option value="">${esc(m.maxInput ? t('form.fixedCtx', { n: fmtCtx(m.maxInput) || m.maxInput }) : t('form.notAdjustable'))}</option>`;
       wbCtx.disabled = true;
     }
-    const badges = (m.badges || []).map((b) => `<span class="badge${b.kind === 'tier' ? ' tier' : ''}" title="${esc(b.text)}">${esc(b.label)}</span>`).join('');
-    const promo = (m.badges || []).filter((b) => b.text).map((b) => b.text).join('; ');
-    const credits = creditsLabel(m);
-    const next = m.nextDiscount ? t('form.nextDiscount', { label: m.nextDiscount.label || t('form.discount'), time: fmtClock(m.nextDiscount.at) }) : '';
-    setHint(root, 'wb-model', [badges, esc([credits && m.credits != null ? t('form.creditsCurrent', { v: credits }) : '', m.description, promo, next].filter(Boolean).join(' · '))].join(' '));
-    setHint(root, 'wb-effort', !m.reasoning ? t('form.noEffort')
-      : m.id === 'auto' ? t('form.effortAuto')
-        : `${t('form.effortHint')}${m.canDisableThinking ? ` ${t('form.effortOff')}` : ''}`);
-    setHint(root, 'wb-ctx', m.context ? t('form.ctxHint') : t('form.ctxNone'));
   };
-  gptSel.addEventListener('change', () => syncGpt());
-  wbSel.addEventListener('change', () => syncWb());
+  for (const role of ['lead', 'executor']) {
+    const r = ROLE_PREFIX[role];
+    bindSeg(root, `${p}-${r}-engine`, () => syncRole(role, { keepModel: false }));
+    $(`#${p}-${r}-model`, root).addEventListener('change', () => syncRole(role));
+  }
+  root.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-open-accounts]')) return;
+    // inside Settings just switch sections (keeps what was typed); elsewhere open Settings there
+    const tab = document.querySelector('#modal .tab-nav [data-tab="accounts"]');
+    if (tab) tab.click();
+    else actions.openSettings?.('accounts');
+  });
   bindSeg(root, `${p}-team`);
   if (onChange) {
     root.querySelectorAll('select, input, textarea, .seg').forEach((input) => {
@@ -195,20 +244,20 @@ function bindSettingsForm(root, p, st, onChange) {
       input.addEventListener('input', onChange);
     });
   }
-  syncGpt(st.codex?.effort || 'high');
-  syncWb(st.workbuddy?.effort || '', st.workbuddy?.contextWindow || '');
+  syncRole('lead', { effort: roleSpec(st, 'lead').effort });
+  syncRole('executor', { effort: roleSpec(st, 'executor').effort });
+  syncCtx(st.workbuddy?.contextWindow || '');
 }
 
 export function readSettingsForm(root, p) {
   const v = (id) => $(`#${p}-${id}`, root);
+  const role = (r) => ({ engine: segValue(root, `${p}-${r}-engine`), model: v(`${r}-model`).value, effort: v(`${r}-effort`).value });
+  const lead = role('lead');
+  const exec = role('exec');
   const out = {
-    codex: { model: v('gpt-model').value, effort: v('gpt-effort').value, webSearch: v('web').checked },
-    workbuddy: {
-      model: v('wb-model').value,
-      effort: v('wb-effort').value,
-      contextWindow: Number(v('wb-ctx').value) || 0,
-      addDirs: v('dirs').value.split('\n').map((x) => x.trim()).filter(Boolean),
-    },
+    roles: { lead, executor: exec },
+    codex: { webSearch: v('web').checked },
+    workbuddy: { addDirs: v('dirs').value.split('\n').map((x) => x.trim()).filter(Boolean) },
     team: { mode: segValue(root, `${p}-team`) || 'off', maxTeammates: Math.max(2, Math.min(6, Math.round(Number(v('mates').value)) || 3)) },
     agents: { mode: v('mode').value, replyLanguage: v('reply').value },
     loop: {
@@ -219,6 +268,12 @@ export function readSettingsForm(root, p) {
     },
     safety: { policy: v('policy').value },
   };
+  // each engine section remembers its last model, so switching engines back restores it
+  for (const r of [lead, exec]) {
+    const sec = ENGINE_SECTION[r.engine];
+    out[sec] = { ...(out[sec] || {}), model: r.model, effort: r.effort };
+  }
+  if (exec.engine === 'workbuddy') out.workbuddy.contextWindow = Number(v('wb-ctx').value) || 0;
   if (v('perm')) out.workbuddy.permissionMode = v('perm').value;
   if (v('autonomy')) out.loop.autonomy = v('autonomy').value;
   return out;
@@ -245,11 +300,10 @@ export function mountSettingsForm(box, p, st, opts = {}, onChange) {
 }
 
 export function settingsSummary(st) {
-  const ctx = st.workbuddy?.contextWindow ? ` · ${fmtCtx(st.workbuddy.contextWindow)}` : '';
-  const parts = [
-    `GPT ${st.codex?.model || t('form.default')}${st.codex?.effort ? ` · ${tEffort(st.codex.effort)}` : ''}`,
-    `WorkBuddy ${wbModel(st.workbuddy?.model || 'auto').name} · ${wbEffortText(st.workbuddy)}${ctx}`,
-  ];
+  const lead = roleSpec(st, 'lead');
+  const exec = roleSpec(st, 'executor');
+  const desc = (s) => `${s.name} ${modelName(s.engine, s.model)}${s.effort ? ` · ${tEffort(s.effort)}` : ''}`;
+  const parts = [`${t('role.short.lead')}: ${desc(lead)}`, `${t('role.short.executor')}: ${desc(exec)}`];
   if (st.team?.mode && st.team.mode !== 'off') parts.push(`${t('form.team')}: ${TEAM_MODES().find(([v]) => v === st.team.mode)?.[1]}`);
   if (st.agents?.mode && st.agents.mode !== 'normal') parts.push(TASK_MODES().find(([v]) => v === st.agents.mode)?.[1]);
   if (st.loop?.checkCommand) parts.push(`${t('form.check')}: ${st.loop.checkCommand}`);
