@@ -64,7 +64,7 @@ npm run build:windows
 # 安装包、ZIP 和 SHA256SUMS.txt 位于 dist/windows/
 ```
 
-Windows 安装包尚未进行代码签名。仓库的 **Windows build** GitHub Actions 工作流也可手动生成这些文件。
+Windows 安装包尚未进行代码签名。仓库的 **Windows build** GitHub Actions 工作流会在版本标签推送后构建并发布，也可手动构建。
 
 **App（推荐）**
 

@@ -58,12 +58,17 @@ else {
     app.setAppUserModelId('local.oneiropolos.app');
     const url = await startService();
     win = new BrowserWindow({ width: 1240, height: 840, minWidth: 850, minHeight: 600, title: 'Oneiropolos', backgroundColor: '#171717', icon: path.join(program, 'public/logo.png'), webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: 'File', submenu: [{ label: 'New task', accelerator: 'Ctrl+N', click: () => command('new') }, { label: 'Settings', accelerator: 'Ctrl+,', click: () => command('settings') }, { type: 'separator' }, { role: 'quit' }] },
-      { role: 'editMenu' },
-      { label: 'View', submenu: [{ label: 'Command palette', accelerator: 'Ctrl+K', click: () => command('palette') }, { role: 'reload' }, { role: 'togglefullscreen' }, { label: 'Open data folder', click: () => shell.openPath(dataDir) }, { role: 'toggleDevTools' }] },
-      { label: 'Help', submenu: [{ label: 'Help', accelerator: 'Ctrl+/', click: () => command('help') }] },
-    ]));
+    Menu.setApplicationMenu(null);
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const key = input.key.toLowerCase();
+      if (input.control && !input.alt && !input.shift) {
+        const action = { n: 'new', k: 'palette', ',': 'settings', '/': 'help' }[key];
+        if (action) { event.preventDefault(); command(action); }
+        else if (key === 'r') { event.preventDefault(); win.webContents.reload(); }
+      } else if (key === 'f5') { event.preventDefault(); win.webContents.reload(); }
+      else if (key === 'f11') { event.preventDefault(); win.setFullScreen(!win.isFullScreen()); }
+    });
     win.webContents.setWindowOpenHandler(({ url: target }) => { if (/^https?:\/\//i.test(target)) shell.openExternal(target); return { action: 'deny' }; });
     win.webContents.on('will-navigate', (event, target) => { if (new URL(target).origin !== origin) { event.preventDefault(); if (/^https?:\/\//i.test(target)) shell.openExternal(target); } });
     ipcMain.handle('oneiropolos:folder', async (event, start) => {

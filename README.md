@@ -64,7 +64,7 @@ npm run build:windows
 # Installer, ZIP and SHA256SUMS.txt: dist/windows/
 ```
 
-The Windows binaries are unsigned. A manual **Windows build** GitHub Actions workflow also produces the same artifacts.
+The Windows binaries are unsigned. The **Windows build** GitHub Actions workflow builds on version tags, publishes release assets, and can also be run manually.
 
 **macOS app**
 
