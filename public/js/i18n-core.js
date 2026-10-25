@@ -27,12 +27,21 @@ export function format(str, params) {
   return String(str).replace(/\{(\w+)\}/g, (m, k) => (params[k] != null ? String(params[k]) : m));
 }
 
+// {lead} and {exec} in any text name the engines playing the two roles (GPT, Claude, DeepSeek, WorkBuddy). The UI sets
+// them for the task on screen, a runner for its own task; explicit params still win.
+const ROLE_VARS = { lead: 'GPT', exec: 'WorkBuddy' };
+
+export function setRoleNames(names = {}) {
+  if (names.lead) ROLE_VARS.lead = names.lead;
+  if (names.exec) ROLE_VARS.exec = names.exec;
+}
+
 export function makeT(dict, fallback = {}) {
   return function t(key, params) {
     let s;
     if (params && params.n === 1) s = dict[`${key}#one`] ?? fallback[`${key}#one`];
     if (s == null) s = dict[key] ?? fallback[key];
-    return s == null ? key : format(s, params);
+    return s == null ? key : format(s, { ...ROLE_VARS, ...(params || {}) });
   };
 }
 

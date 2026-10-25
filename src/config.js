@@ -3,6 +3,12 @@ import { CONFIG_PATH, ensureDirs } from './paths.js';
 import { readJson, writeJsonAtomic } from './util.js';
 
 export const DEFAULTS = {
+  // Who plays which role. engine: chatgpt | claude | deepseek | workbuddy; model/effort empty = the engine section's
+  // own (codex.model, workbuddy.model …), so settings from before roles existed keep working.
+  roles: {
+    lead: { engine: 'chatgpt', model: '', effort: '' },
+    executor: { engine: 'workbuddy', model: '', effort: '' },
+  },
   codex: {
     path: '', // empty = find automatically
     home: '', // empty = $CODEX_HOME or ~/.codex; a path here runs codex against its own home (its own hooks/config)
@@ -29,6 +35,18 @@ export const DEFAULTS = {
     tools: '', // empty = built-in whitelist of coding tools; 'all' = no restriction; or a comma-separated list
     addDirs: [], // additional directories WorkBuddy may read and write (--add-dir)
     autocompact: '', // '' = WorkBuddy default; 'auto' or a token count like 400k
+  },
+  claude: {
+    path: '', // empty = find `claude` (Claude Code) automatically
+    home: '', // empty = the app's own config dir ~/.wbloop/claude-home (its own sign-in); ~/.claude shares the normal one
+    model: '', // empty = the account's default; or an alias (fable, opus, sonnet, haiku) or a full model name
+    effort: '',
+  },
+  deepseek: {
+    appPath: '', // empty = /Applications/DeepSeek Harness.app
+    home: '', // empty = ~/.wbloop/dsh-home (its own sign-in, separate from the desktop app's ~/.dsh)
+    model: 'deepseek-flash',
+    effort: 'high', // off | low | high | max
   },
   loop: {
     maxRounds: 30,
@@ -92,7 +110,7 @@ export const DEFAULTS = {
 };
 
 // Settings copied into each task (everything that changes how a task runs); UI preferences and profiles stay global.
-export const TASK_KEYS = ['codex', 'workbuddy', 'loop', 'agents', 'team', 'prompts', 'subagents', 'safety', 'hooks', 'skills', 'mcp', 'notebook', 'system'];
+export const TASK_KEYS = ['roles', 'codex', 'claude', 'deepseek', 'workbuddy', 'loop', 'agents', 'team', 'prompts', 'subagents', 'safety', 'hooks', 'skills', 'mcp', 'notebook', 'system'];
 
 function isPlainObject(v) {
   return v && typeof v === 'object' && !Array.isArray(v);

@@ -171,7 +171,7 @@ export function mergePath(...dirLists) {
  * AbortSignal. Lines for which rawFilter(line) returns false are not written to rawFile.
  */
 export function runProcess(cmd, args, opts = {}) {
-  const { cwd, env, input, onLine, onStderr, signal, timeoutMs, idleTimeoutMs, rawFile, rawFilter } = opts;
+  const { cwd, env, input, onLine, onStderr, signal, timeoutMs, idleTimeoutMs, rawFile, rawFilter, keepStdin = false, onSpawn } = opts;
   return new Promise((resolve) => {
     let child;
     try {
@@ -239,7 +239,12 @@ export function runProcess(cmd, args, opts = {}) {
     });
     child.stdin.on('error', () => {});
     if (input != null) child.stdin.end(input);
-    else child.stdin.end();
+    else if (!keepStdin) child.stdin.end();
+    try {
+      onSpawn?.(child);
+    } catch {
+      // ignore
+    }
 
     const timers = [];
     if (timeoutMs) {

@@ -1,6 +1,6 @@
 // The interface language: chosen in settings, injected into <html lang> by the server. English is the default and the
 // fallback for any missing key. Switching the language reloads the page.
-import { LANGS, localeOf, makeDuration, makeT, normalizeLang } from './i18n-core.js';
+import { LANGS, localeOf, makeDuration, makeT, normalizeLang, setRoleNames } from './i18n-core.js';
 import en from './locales/en.js';
 
 export const lang = normalizeLang(document.documentElement.lang);
@@ -9,7 +9,7 @@ const dict = lang === 'en' ? en : (await import(`./locales/${lang}.js`)).default
 export const t = makeT(dict, en);
 export const locale = localeOf(lang);
 export const fmtDuration = makeDuration(t);
-export { LANGS };
+export { LANGS, setRoleNames };
 
 /** Static text in index.html: data-i18n (text), data-i18n-placeholder, data-i18n-title, data-i18n-aria. */
 export function translateDom(root = document) {

@@ -3,8 +3,10 @@ import fs from 'node:fs';
 import en from '../public/js/locales/en.js';
 import ja from '../public/js/locales/ja.js';
 import zh from '../public/js/locales/zh.js';
-import { DEFAULT_LANG, localeOf, makeDuration, makeT, normalizeLang } from '../public/js/i18n-core.js';
+import { DEFAULT_LANG, localeOf, makeDuration, makeT, normalizeLang, setRoleNames } from '../public/js/i18n-core.js';
 import { CONFIG_PATH } from './paths.js';
+
+export { setRoleNames };
 
 const DICTS = { en, zh, ja };
 const T = Object.fromEntries(Object.entries(DICTS).map(([k, d]) => [k, makeT(d, en)]));

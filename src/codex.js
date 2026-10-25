@@ -185,7 +185,7 @@ function condenseItem(phase, item) {
 export async function runCodexTurn(opts) {
   const {
     found, threadId, prompt, cwd, model, effort, sandbox = 'read-only', schemaPath,
-    outFile, rawFile, onEvent, signal, timeoutMs, instructionsFile, webSearch = false, extraArgs = [], codexHome = '',
+    outFile, rawFile, onEvent, signal, timeoutMs, idleTimeoutMs, instructionsFile, webSearch = false, extraArgs = [], codexHome = '',
   } = opts;
   if (!found) throw new Error(t('srv.codex.missing'));
   const args = ['exec'];
@@ -222,6 +222,7 @@ export async function runCodexTurn(opts) {
     input: prompt,
     signal,
     timeoutMs,
+    idleTimeoutMs,
     rawFile,
     onLine: (line) => {
       let ev;
@@ -274,7 +275,7 @@ export async function runCodexTurn(opts) {
   }
   if (!text) text = lastAgentMessage;
 
-  const failed = res.aborted || res.timedOut || res.error || (res.code !== 0 && !text) || (!text && errors.length > 0);
+  const failed = res.aborted || res.timedOut || res.idleTimedOut || res.error || (res.code !== 0 && !text) || (!text && errors.length > 0);
   let error = null;
   if (failed) {
     const stderrTail = String(res.stderr || '').split('\n').filter((l) => l.trim() && !/Reading additional input|models_manager/.test(l)).slice(-6).join('\n');
@@ -282,8 +283,10 @@ export async function runCodexTurn(opts) {
       ? t('srv.stopped')
       : res.timedOut
         ? t('srv.codex.timeout', { min: Math.round(timeoutMs / 60000) })
+        : res.idleTimedOut
+          ? t('srv.wb.idle', { min: Math.round(idleTimeoutMs / 60000) })
         : errors.join('\n') || res.error?.message || stderrTail || t('srv.codex.exit', { code: res.code });
-    error = { message: truncate(message, 2000), kind: res.aborted ? 'aborted' : res.timedOut ? 'transient' : classifyError(message) };
+    error = { message: truncate(message, 2000), kind: res.aborted ? 'aborted' : res.timedOut || res.idleTimedOut ? 'transient' : classifyError(message) };
   }
   return { ok: !failed, threadId: newThreadId, text, usage, error, durationMs: Date.now() - started };
 }
@@ -325,9 +328,9 @@ export function normalizeRateLimits(raw, { source, at = Date.now(), resetCredits
  * Reads the live quota through `codex app-server` (account/rateLimits/read): no model call, no quota used.
  * app-server is the same line-delimited JSON-RPC interface the official Codex extension and desktop app use.
  */
-export async function codexRateLimitsLive(found, { timeoutMs = 20_000 } = {}) {
+export async function codexRateLimitsLive(found, { timeoutMs = 20_000, home = '' } = {}) {
   if (!found) return null;
-  const env = await codexEnv(found);
+  const env = await codexEnv(found, home);
   return new Promise((resolve) => {
     let child;
     try {
@@ -390,8 +393,8 @@ export async function codexRateLimitsLive(found, { timeoutMs = 20_000 } = {}) {
 }
 
 /** Fallback: the last quota reported in recent Codex session logs (rollout-*.jsonl). */
-export function codexRateLimitsFromRollouts({ days = 7 } = {}) {
-  const root = path.join(CODEX_HOME, 'sessions');
+export function codexRateLimitsFromRollouts({ days = 7, home = '' } = {}) {
+  const root = path.join(codexHomeOf(home), 'sessions');
   const files = [];
   const now = new Date();
   for (let d = 0; d < days; d++) {
@@ -445,9 +448,9 @@ export function codexRateLimitsFromRollouts({ days = 7 } = {}) {
   return null;
 }
 
-export function startCodexLogin(found, onLine) {
+export function startCodexLogin(found, onLine, home = '') {
   return (async () => {
-    const env = await codexEnv(found);
+    const env = await codexEnv(found, home);
     return runProcess(found.path, ['login'], {
       env,
       timeoutMs: 10 * 60_000,

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // WorkBuddy's PreToolUse / PostToolUse hook for one run (installed through --settings by src/loop.js):
-//   node src/hook-gate.js pre|post --run <id> [--round N] [--member name]
+//   node src/hook-gate.js pre|post|readonly --run <id> [--round N] [--member name]
 // pre:  the user's beforeToolCall hooks, then the sensitive-command gate (approval by the user, a toolConfirmation
 //       hook, or the safety policy). Exit 2 blocks the tool; stderr is what the model sees.
 // post: the user's afterToolCall hooks (exit 1 → their output replaces what the model sees).
+// readonly: for a lead running on an engine without a local sandbox (WorkBuddy): file-writing tools and shell
+//       commands that obviously write are turned away.
 import fs from 'node:fs';
 import { t } from './i18n.js';
 import { runHooks } from './hooks.js';
@@ -22,6 +24,13 @@ const runId = opt('run');
 const round = Number(opt('round')) || null;
 const member = opt('member') || null;
 
+const WRITE_CMD = /(^|[;&|(`]\s*|\bsudo\s+|\bxargs\s+)(rm|rmdir|mv|cp|mkdir|touch|chmod|chown|ln|tee|truncate|dd|install|patch|unzip)\b|\btar\s+-?[a-z]*x|\bsed\s+(-[a-zA-Z]*i|--in-place)|\bperl\s+-[a-zA-Z]*i|\bgit\s+(add|commit|push|reset|checkout|switch|merge|rebase|stash|clean|restore|apply|am|cherry-pick|revert|tag|pull|fetch|init|clone|mv|rm|worktree)\b|\b(npm|pnpm|yarn|bun)\s+(i|install|ci|add|remove|uninstall|update|upgrade|publish|link)\b|\bpip3?\s+(install|uninstall)\b|\bbrew\s+(install|uninstall|upgrade)\b|(^|[^0-9&<>])>{1,2}\s*(?!\/dev\/null|&)[^\s]/;
+
+/** A shell command that obviously writes to disk (redirects, file utilities, git/npm mutations). */
+function writesFiles(command) {
+  return WRITE_CMD.test(String(command || ''));
+}
+
 function block(message) {
   process.stderr.write(`${message}\n`);
   process.exit(2);
@@ -31,6 +40,14 @@ let input = {};
 try {
   input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 } catch {
+  process.exit(0);
+}
+if (phase === 'readonly') {
+  const name = String(input.tool_name || input.toolName || '');
+  const command = String((input.tool_input || input.toolInput || {}).command || '');
+  if (['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(name) || (['Bash', 'PowerShell'].includes(name) && writesFiles(command))) {
+    block('You are the read-only lead: this would change files, so it was not run. Read and check only; the executor makes all changes.');
+  }
   process.exit(0);
 }
 if (!isValidRunId(runId)) process.exit(0);

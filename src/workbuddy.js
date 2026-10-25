@@ -6,7 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { WB_AUTH_FILE, WB_AUTH_ID, WB_HOME, WB_PRODUCT_PATH, ensureDirs } from './paths.js';
 import { t } from './i18n.js';
-import { baseChildEnv, oneLine, readJson, runProcess, sleep, truncate, writeJsonAtomic } from './util.js';
+import { baseChildEnv, oneLine, readJson, sleep, writeJsonAtomic } from './util.js';
+import { runStreamJson, summarizeToolInput, toolInputDetail } from './engines/streamjson.js';
+
+export { summarizeToolInput, toolInputDetail };
 
 const CLI_REL = 'Contents/Resources/app.asar.unpacked/cli';
 
@@ -345,146 +348,19 @@ export function classifyWbError(text) {
   return 'unknown';
 }
 
-function relPath(file, cwd) {
-  if (!file || typeof file !== 'string') return '';
-  if (cwd && file.startsWith(cwd + path.sep)) return file.slice(cwd.length + 1);
-  return file;
-}
-
-export function summarizeToolInput(name, input, cwd) {
-  const i = input || {};
-  switch (name) {
-    case 'Write':
-    case 'Edit':
-    case 'MultiEdit':
-    case 'Read':
-    case 'NotebookEdit':
-    case 'NotebookRead':
-      return relPath(i.file_path || i.notebook_path || i.path, cwd);
-    case 'Bash':
-    case 'PowerShell':
-      return oneLine(i.command, 400);
-    case 'Glob':
-      return `${i.pattern || ''}${i.path ? ` @ ${relPath(i.path, cwd)}` : ''}`;
-    case 'Grep':
-      return `${i.pattern || ''}${i.path ? ` @ ${relPath(i.path, cwd)}` : ''}`;
-    case 'WebFetch':
-      return i.url || '';
-    case 'WebSearch':
-      return i.query || '';
-    case 'Agent':
-    case 'Task':
-      return oneLine(i.description || i.prompt, 200);
-    case 'TaskCreate':
-      return oneLine(i.subject || i.description || i.title || JSON.stringify(i), 160);
-    case 'TaskUpdate':
-      return `#${i.taskId ?? '?'}${i.status ? ` → ${i.status}` : ''}${i.subject ? ` ${oneLine(i.subject, 120)}` : ''}`;
-    case 'TaskGet':
-    case 'TaskOutput':
-    case 'TaskStop':
-      return `#${i.taskId ?? i.task_id ?? i.id ?? '?'}`;
-    case 'Skill':
-      return i.skill || i.name || '';
-    default:
-      return oneLine(JSON.stringify(i), 200);
-  }
-}
-
-function clip(text, max) {
-  const s = String(text ?? '');
-  return s.length > max ? `${s.slice(0, max)}\n…(+${s.length - max} chars)` : s;
-}
-
-/** Tool arguments for the UI (the important fields per tool, long content truncated). GPT still gets the summary. */
-export function toolInputDetail(name, input, cwd) {
-  const i = input || {};
-  switch (name) {
-    case 'Bash':
-    case 'PowerShell':
-      return { command: clip(i.command, 6000), description: clip(i.description || '', 300), background: Boolean(i.run_in_background) };
-    case 'Edit':
-      return { file: relPath(i.file_path, cwd), old: clip(i.old_string, 8000), new: clip(i.new_string, 8000), all: Boolean(i.replace_all) };
-    case 'MultiEdit':
-      return { file: relPath(i.file_path, cwd), edits: (i.edits || []).slice(0, 30).map((e) => ({ old: clip(e?.old_string, 3000), new: clip(e?.new_string, 3000) })) };
-    case 'Write':
-      return { file: relPath(i.file_path, cwd), content: clip(i.content, 12_000), lines: String(i.content ?? '').split('\n').length };
-    case 'Read':
-    case 'NotebookRead':
-      return { file: relPath(i.file_path || i.notebook_path, cwd), offset: i.offset ?? null, limit: i.limit ?? null };
-    case 'NotebookEdit':
-      return { file: relPath(i.notebook_path, cwd), cell: i.cell_id ?? null, mode: i.edit_mode || '', source: clip(i.new_source, 6000) };
-    case 'Grep':
-      return { pattern: i.pattern || '', path: relPath(i.path, cwd), glob: i.glob || '', mode: i.output_mode || '' };
-    case 'Glob':
-      return { pattern: i.pattern || '', path: relPath(i.path, cwd) };
-    case 'WebFetch':
-      return { url: i.url || '', prompt: clip(i.prompt || '', 1000) };
-    case 'WebSearch':
-      return { query: i.query || '' };
-    case 'Agent':
-    case 'Task':
-      return { description: i.description || '', type: i.subagent_type || '', prompt: clip(i.prompt, 6000) };
-    default:
-      return { json: clip(JSON.stringify(i, null, 2), 3000) };
-  }
-}
-
-/** Assembles stream-json deltas into a snapshot of what is being generated, for the live UI (main agent only). */
-function createLiveTracker(onLive) {
-  let blocks = new Map();
-  const snapshot = () => ({
-    blocks: [...blocks.values()].map((b) => ({ type: b.type, name: b.name || '', text: b.text.length > 20_000 ? `…${b.text.slice(-20_000)}` : b.text })),
-  });
-  const emit = () => onLive?.(snapshot());
-  return {
-    handle(ev) {
-      if (ev.parent_tool_use_id) return;
-      const e = ev.event || {};
-      if (e.type === 'message_start') {
-        blocks = new Map();
-      } else if (e.type === 'content_block_start') {
-        const cb = e.content_block || {};
-        const type = cb.type === 'tool_use' ? 'tool' : cb.type === 'thinking' ? 'thinking' : cb.type === 'text' ? 'text' : null;
-        if (type) blocks.set(e.index, { type, name: cb.name || '', text: '' });
-      } else if (e.type === 'content_block_delta') {
-        const b = blocks.get(e.index);
-        const d = e.delta || {};
-        const piece = d.thinking ?? d.text ?? d.partial_json ?? '';
-        if (!b || !piece) return;
-        b.text += piece;
-        emit();
-      }
-    },
-    // once the complete message arrives, the regular events take over from the deltas
-    settle() {
-      if (!blocks.size) return;
-      blocks = new Map();
-      emit();
-    },
-  };
-}
-
-function toolResultText(content) {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content.map((c) => (typeof c === 'string' ? c : c?.type === 'text' ? c.text : c?.type ? `[${c.type}]` : '')).join('\n');
-  }
-  return content == null ? '' : JSON.stringify(content);
-}
-
 /**
  * Runs WorkBuddy once, headless (-p, stream-json).
  * The first call names the session with --session-id, later calls --resume it, so WorkBuddy keeps its context.
  * effort 'off' disables thinking; contextWindow (tokens) is the desktop app's "context window".
  * With onLive, partial output is enabled and thinking/text/tool arguments stream to the UI as they are generated.
  * systemPromptFile replaces WorkBuddy's system prompt completely; agents (JSON) defines its sub-agents; hooks,
- * mcpConfig and addDirs come from the program's settings.
+ * mcpConfig and addDirs come from the program's settings. jsonSchema (lead calls) asks for a structured reply.
  */
 export async function runWorkBuddyTurn(opts) {
   const {
     found, sessionId, resume, prompt, cwd, model, effort, contextWindow, permissionMode = 'bypassPermissions', maxTurns = 80,
     appendSystemPrompt, systemPromptFile, agents, hooks, mcpConfig, addDirs = [], autocompact, env: extraEnv,
-    onEvent, onLive, signal, timeoutMs, idleTimeoutMs, rawFile, tools = WB_DEFAULT_TOOLS,
+    onEvent, onLive, signal, timeoutMs, idleTimeoutMs, rawFile, tools = WB_DEFAULT_TOOLS, disallowed = WB_DISALLOWED_TOOLS, jsonSchema,
   } = opts;
   if (!found) throw new Error(t('srv.wb.missing'));
   const args = [
@@ -492,7 +368,7 @@ export async function runWorkBuddyTurn(opts) {
     '--output-format', 'stream-json', '--verbose',
     '--permission-mode', permissionMode,
     '--max-turns', String(maxTurns),
-    '--disallowedTools', WB_DISALLOWED_TOOLS.join(','),
+    '--disallowedTools', disallowed.join(','),
   ];
   if (onLive) args.push('--include-partial-messages');
   // tools === 'all': no restriction, WorkBuddy's defaults
@@ -512,111 +388,11 @@ export async function runWorkBuddyTurn(opts) {
   if (mcpConfig) args.push('--mcp-config', mcpConfig);
   for (const d of addDirs) if (d) args.push('--add-dir', d);
   if (autocompact) args.push('--autocompact', String(autocompact));
-
-  const started = Date.now();
-  const toolCalls = [];
-  const toolIndex = new Map();
-  const texts = [];
-  const live = onLive ? createLiveTracker(onLive) : null;
-  let sawInit = false;
-  let result = null;
-  let modelName = '';
-
-  const res = await runProcess(found.electron, args, {
-    cwd,
-    env: await wbEnv(found, extraEnv || {}),
-    input: prompt,
-    signal,
-    timeoutMs,
-    idleTimeoutMs,
-    rawFile,
-    // deltas are only for the live view; keep them out of the raw log
-    rawFilter: (line) => !line.startsWith('{"type":"stream_event"'),
-    onLine: (line) => {
-      let ev;
-      try {
-        ev = JSON.parse(line);
-      } catch {
-        return;
-      }
-      // sub-agent messages carry parent_tool_use_id; the UI nests them under the matching Agent call
-      const parent = ev.parent_tool_use_id || null;
-      if (ev.type === 'stream_event') {
-        live?.handle(ev);
-      } else if (ev.type === 'system' && ev.subtype === 'init') {
-        sawInit = true;
-        modelName = ev.model || '';
-        onEvent?.({ kind: 'wb.init', sessionId: ev.session_id, model: ev.model });
-      } else if (ev.type === 'assistant') {
-        if (!parent) live?.settle();
-        if (ev.message?.model && !parent) modelName = ev.message.model;
-        for (const block of ev.message?.content || []) {
-          if (block.type === 'text' && block.text?.trim()) {
-            if (!parent) texts.push(block.text);
-            onEvent?.({ kind: 'wb.text', text: truncate(block.text, 20_000), parent });
-          } else if (block.type === 'thinking' && (block.thinking || block.text)) {
-            onEvent?.({ kind: 'wb.thinking', text: truncate(block.thinking || block.text, 8000), parent });
-          } else if (block.type === 'tool_use') {
-            const call = { id: block.id, name: block.name, summary: summarizeToolInput(block.name, block.input, cwd), ok: null };
-            toolIndex.set(block.id, toolCalls.length);
-            toolCalls.push(call);
-            onEvent?.({ kind: 'wb.tool', id: block.id, name: block.name, summary: call.summary, input: toolInputDetail(block.name, block.input, cwd), parent });
-          }
-        }
-      } else if (ev.type === 'user') {
-        const content = ev.message?.content;
-        if (!Array.isArray(content)) return;
-        for (const block of content) {
-          if (block?.type !== 'tool_result') continue;
-          const idx = toolIndex.get(block.tool_use_id);
-          const isError = !!block.is_error;
-          if (idx != null) toolCalls[idx].ok = !isError;
-          onEvent?.({ kind: 'wb.tool_result', id: block.tool_use_id, isError, text: clip(toolResultText(block.content), 8000), parent });
-        }
-      } else if (ev.type === 'result') {
-        result = ev;
-      }
-    },
+  if (jsonSchema) args.push('--json-schema', jsonSchema);
+  return runStreamJson({
+    command: found.electron, args, env: await wbEnv(found, extraEnv || {}), cwd, prompt, sessionId,
+    onEvent, onLive, signal, timeoutMs, idleTimeoutMs, rawFile, classify: classifyWbError,
   });
-  live?.settle();
-
-  const errors = [...(result?.errors || [])];
-  if (!result) {
-    if (res.aborted) errors.push(t('srv.stopped'));
-    else if (res.timedOut) errors.push(t('srv.wb.timeout', { min: Math.round(timeoutMs / 60000) }));
-    else if (res.idleTimedOut) errors.push(t('srv.wb.idle', { min: Math.round(idleTimeoutMs / 60000) }));
-    else if (res.error) errors.push(res.error.message);
-    const tail = String(res.stderr || '').split('\n').filter((l) => l.trim() && !/^\s+at |fetch config failed/.test(l)).slice(-8).join('\n');
-    if (tail) errors.push(tail);
-    if (!errors.length) errors.push(t('srv.wb.crashed', { code: res.code, signal: res.signal || '-' }));
-  }
-  const ok = !!result && result.subtype === 'success' && !result.is_error;
-  const errorText = errors.join('\n');
-  const maxTurnsHit = /max turns/i.test(errorText);
-  let errorKind = null;
-  if (!ok) {
-    if (res.aborted) errorKind = 'aborted';
-    else if (maxTurnsHit) errorKind = 'max_turns';
-    else if (res.timedOut || res.idleTimedOut) errorKind = 'transient';
-    else errorKind = classifyWbError(`${errorText}\n${result?.result || ''}`);
-  }
-  return {
-    ok,
-    sawInit,
-    sessionId: result?.session_id || sessionId,
-    model: modelName,
-    resultText: typeof result?.result === 'string' ? result.result : '',
-    lastTexts: texts.slice(-3),
-    subtype: result?.subtype || null,
-    errors,
-    errorKind,
-    maxTurnsHit,
-    numTurns: result?.num_turns ?? null,
-    usage: result?.usage || null,
-    permissionDenials: result?.permission_denials || [],
-    toolCalls,
-    durationMs: Date.now() - started,
-  };
 }
 
 function freePort() {

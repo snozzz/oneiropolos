@@ -1,15 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { MODEL_UNSUPPORTED_RE, findCodex, nextFallbackModel, recordModelResult, runCodexTurn } from './codex.js';
+import { MODEL_UNSUPPORTED_RE, nextFallbackModel, recordModelResult } from './codex.js';
 import { deepMerge } from './config.js';
+import { engine, engineOf, roleNames, roleSpec } from './engines/index.js';
 import { loadHookRules, runHooks } from './hooks.js';
-import { clockText, t } from './i18n.js';
+import { clockText, setRoleNames, t } from './i18n.js';
 import { codexMcpArgs, wbMcpConfig } from './mcp.js';
 import { NOTEBOOK_DIR, ensureNotebook } from './notebook.js';
 import { ROOT } from './paths.js';
 import * as P from './prompts.js';
 import { cancelPending, gateLog } from './safety.js';
-import { ensureSchemaFile, normalizeGptOutput } from './schema.js';
+import { GPT_OUTPUT_SCHEMA, ensureSchemaFile, normalizeGptOutput } from './schema.js';
 import { listSkills } from './skills.js';
 import { Snapshotter } from './snapshot.js';
 import { agentsArg, listSubagents } from './subagents.js';
@@ -19,7 +20,7 @@ import { SleepGuard, notify } from './system.js';
 import { applyTree, initBoard, mergeCommits, prepareWorkspace, removeWorkspace, rosterText, snapshotWorkspace, teamRoundDir } from './team.js';
 import { recordUsage } from './usage.js';
 import { baseChildEnv, extractJsonObject, isTempPath, nowIso, oneLine, readJson, runProcess, sleep, truncate, truncateMiddle, uuid, writeJsonAtomic } from './util.js';
-import { findWorkBuddy, runWorkBuddyTurn, wbAuthState } from './workbuddy.js';
+import { wbAuthState } from './workbuddy.js';
 
 class StopSignal extends Error {
   constructor() {
@@ -225,11 +226,21 @@ export class Orchestrator {
     this.emit('hook', { type, ran: r.ran, blocked: r.blocked ? oneLine(r.blocked.message, 300) : null, replaced: r.replaced != null, context: Boolean(r.additionalContext), prompt: Boolean(r.prompt), ...extra });
   }
 
-  /** GPT's sandbox and working directory, fixed once chosen so resumed sessions stay consistent. */
+  /**
+   * The lead's sandbox and working directory, fixed once chosen so resumed sessions stay consistent. ChatGPT follows
+   * codex.sandbox; Claude always works from a scratch directory (its sandbox keeps writes there); WorkBuddy and
+   * DeepSeek read the project in place, read-only.
+   */
   resolveGptSandbox() {
     const s = this.state;
+    const leadId = engineOf(this.cfg, 'lead');
+    if (s.gpt.sandbox && (s.gpt.sandbox.engine || 'chatgpt') !== leadId) s.gpt.sandbox = null;
     if (!s.gpt.sandbox) {
-      if (s.gpt.threadId) {
+      if (leadId === 'claude') {
+        s.gpt.sandbox = { mode: 'workspace-write', cwd: path.join(this.dir, 'gpt-scratch'), engine: leadId };
+      } else if (leadId !== 'chatgpt') {
+        s.gpt.sandbox = { mode: 'read-only', cwd: s.workdir, engine: leadId };
+      } else if (s.gpt.threadId) {
         s.gpt.sandbox = { mode: 'read-only', cwd: s.workdir };
       } else if ((this.cfg.codex.sandbox || 'scratch') === 'scratch' && !isTempPath(s.workdir)) {
         s.gpt.sandbox = { mode: 'workspace-write', cwd: path.join(this.dir, 'gpt-scratch') };
@@ -276,7 +287,9 @@ export class Orchestrator {
         notebookPath = null;
       }
     }
-    return { settings: this.cfg, workdir: s.workdir, sandbox: this.sandbox, subagents, skills, notebookPath, extraDirs: this.extraDirs(), mode: this.mode, team: this.teamCfg, ...extra };
+    const names = roleNames(this.cfg);
+    const execEngine = engineOf(this.cfg, 'executor');
+    return { settings: this.cfg, workdir: s.workdir, sandbox: this.sandbox, subagents: engine(execEngine).meta.agents ? subagents : [], skills, notebookPath, extraDirs: this.extraDirs(), mode: this.mode, team: this.teamCfg, names, execEngine, gate: engine(execEngine).meta.gate, ...extra };
   }
 
   /** Writes the system prompt of a role to a file in the run directory (Codex and WorkBuddy both read it from there). */
@@ -305,26 +318,31 @@ export class Orchestrator {
     return hooks;
   }
 
-  wbCallOptions({ round, member, cwd, sysFile, extraDirs = [] }) {
+  /** Options of one executor call; each engine takes what it supports (hooks and sub-agents only where they exist). */
+  execCallOptions({ round, member, cwd, sysFile, extraDirs = [] }) {
     const wbc = this.cfg.workbuddy;
+    const spec = roleSpec(this.cfg, 'executor');
+    const eng = engine(spec.engine);
     const ctx = this.promptContext();
     const dirs = new Set([...this.extraDirs(), ...extraDirs]);
     if (ctx.notebookPath) dirs.add(NOTEBOOK_DIR);
     for (const sk of ctx.skills) if (!sk.dir.startsWith(`${this.state.workdir}${path.sep}`)) dirs.add(path.dirname(sk.dir));
-    const approvalMin = (this.cfg.safety?.policy || 'ask') === 'ask' ? Math.max(1, Number(this.cfg.safety?.timeoutMin) || 10) + 5 : 0;
+    const approvalMin = eng.meta.gate && (this.cfg.safety?.policy || 'ask') === 'ask' ? Math.max(1, Number(this.cfg.safety?.timeoutMin) || 10) + 5 : 0;
     return {
-      found: this.wb,
+      cfg: this.cfg,
+      found: this.execFound,
       cwd,
-      model: wbc.model,
-      effort: wbc.effort,
+      model: spec.model,
+      effort: spec.effort,
       contextWindow: Number(wbc.contextWindow) || 0,
       permissionMode: wbc.permissionMode,
       maxTurns: wbc.maxTurnsPerCall,
       tools: wbc.tools || undefined,
-      systemPromptFile: sysFile,
-      agents: ctx.subagents.length ? agentsArg(ctx.subagents) : '',
-      hooks: this.wbHooks({ round, member }),
+      systemFile: sysFile,
+      agents: eng.meta.agents && ctx.subagents.length ? agentsArg(ctx.subagents) : '',
+      hooks: eng.meta.gate ? this.wbHooks({ round, member }) : {},
       mcpConfig: wbMcpConfig(this.cfg),
+      mcpArgs: codexMcpArgs(this.cfg),
       addDirs: [...dirs],
       autocompact: wbc.autocompact || '',
       timeoutMs: (wbc.callTimeoutMin || 90) * 60_000,
@@ -369,10 +387,7 @@ export class Orchestrator {
       this.pollControl().catch(() => {});
     }, 1000);
     try {
-      this.codex = findCodex(this.cfg.codex.path);
-      this.wb = findWorkBuddy(this.cfg.workbuddy.appPath);
-      if (!this.codex) throw new PauseSignal('srv.pause.noCodex');
-      if (!this.wb) throw new PauseSignal('srv.pause.noWb');
+      this.findEngines();
       if (!fs.existsSync(s.workdir)) throw new PauseSignal('srv.pause.noDir', { dir: s.workdir });
       this.schemaPath = ensureSchemaFile();
       this.sandbox = this.resolveGptSandbox();
@@ -414,6 +429,17 @@ export class Orchestrator {
         // nothing pending
       }
     }
+  }
+
+  /** Finds the CLI of each role's engine (again after "Continue": the user may have switched engines meanwhile). */
+  findEngines() {
+    const lead = roleSpec(this.cfg, 'lead');
+    const exec = roleSpec(this.cfg, 'executor');
+    setRoleNames(roleNames(this.cfg));
+    this.leadFound = engine(lead.engine).find(this.cfg);
+    this.execFound = engine(exec.engine).find(this.cfg);
+    if (!this.leadFound) throw new PauseSignal(lead.engine === 'chatgpt' ? 'srv.pause.noCodex' : 'srv.pause.noEngine', { name: lead.name });
+    if (!this.execFound) throw new PauseSignal(exec.engine === 'workbuddy' ? 'srv.pause.noWb' : 'srv.pause.noEngine', { name: exec.name });
   }
 
   async sessionStartHooks(resumed) {
@@ -690,28 +716,46 @@ export class Orchestrator {
     for (;;) {
       if (this.stopRequested) throw new StopSignal();
       const c = this.cfg.codex;
+      const spec = roleSpec(this.cfg, 'lead');
+      const eng = engine(spec.engine);
+      setRoleNames(roleNames(this.cfg));
+      // the lead's engine changed since this thread was made (settings of a running task): start a new thread from a recap
+      if (s.gpt[threadKey] && (s.gpt.engine || 'chatgpt') !== spec.engine) {
+        s.gpt.threadId = null;
+        s.gpt.reviewThreadId = null;
+        this.info('srv.gpt.engineChanged', { name: spec.name });
+        if (threadKey === 'threadId' && !rebuilt) {
+          rebuilt = true;
+          base = `${P.recapPrompt({ goal: s.goal, workdir: s.workdir, maxRounds: this.cfg.loop.maxRounds, plan: s.plan, lastAudit: s.lastAudit, rounds: s.rounds, checkCommand: this.cfg.loop.checkCommand, team: this.teamCfg, mode: this.mode })}\n\n---\n\n${prompt}`;
+        }
+      }
+      s.gpt.engine = spec.engine;
+      const found = eng.find(this.cfg);
+      if (!found) throw new PauseSignal(spec.engine === 'chatgpt' ? 'srv.pause.noCodex' : 'srv.pause.noEngine', { name: spec.name });
+      this.sandbox = this.resolveGptSandbox();
       const currentPrompt = appendix ? `${base}\n\n${appendix}` : base;
       const sys = this.writeSystemPrompt(role, this.promptContext());
       s.stats.gptTurns += 1;
       this.save();
-      this.emit('gpt.start', { label, round, resume: Boolean(s.gpt[threadKey]), prompt: truncate(currentPrompt, 24_000), system: sys.source });
+      this.emit('gpt.start', { label, round, resume: Boolean(s.gpt[threadKey]), prompt: truncate(currentPrompt, 24_000), system: sys.source, engine: spec.engine });
       const { step, signal } = this.beginStep('gpt');
-      const gptExtraArgs = codexMcpArgs(this.cfg);
-      const ctxWindow = Math.round(Number(c.contextWindow) || 0);
-      if (ctxWindow > 0) gptExtraArgs.unshift('-c', `model_context_window=${ctxWindow}`);
-      const r = await runCodexTurn({
-        found: this.codex,
+      const r = await eng.lead({
+        cfg: this.cfg,
+        found,
+        runId: this.id,
         threadId: s.gpt[threadKey],
+        newId: uuid(),
         prompt: currentPrompt,
         cwd: this.sandbox.cwd,
-        model: c.model,
-        effort: c.effort,
+        model: spec.model,
+        effort: spec.effort,
         sandbox: this.sandbox.mode,
         schemaPath: this.schemaPath,
-        instructionsFile: sys.file,
-        codexHome: c.home || '',
+        schema: JSON.stringify(GPT_OUTPUT_SCHEMA),
+        systemFile: sys.file,
         webSearch: Boolean(c.webSearch),
-        extraArgs: gptExtraArgs,
+        mcpArgs: codexMcpArgs(this.cfg),
+        mcpConfig: wbMcpConfig(this.cfg),
         outFile: path.join(this.dir, `gpt-last-${threadKey}.txt`),
         rawFile: path.join(rawDir, `gpt-${label}.jsonl`),
         onEvent: (e) => this.emit(e.kind, { ...e, label, round }),
@@ -724,7 +768,7 @@ export class Orchestrator {
         s.stats.gptIn += r.usage.input_tokens || 0;
         s.stats.gptCachedIn += r.usage.cached_input_tokens || 0;
         s.stats.gptOut += r.usage.output_tokens || 0;
-        recordUsage({ agent: 'gpt', model: c.model, input: r.usage.input_tokens || 0, cached: r.usage.cached_input_tokens || 0, output: r.usage.output_tokens || 0, runId: this.id, kind: label });
+        recordUsage({ agent: 'gpt', engine: spec.engine, model: spec.model, input: r.usage.input_tokens || 0, cached: r.usage.cached_input_tokens || 0, output: r.usage.output_tokens || 0, runId: this.id, kind: label });
       }
       this.save();
 
@@ -751,18 +795,19 @@ export class Orchestrator {
           this.info('srv.gpt.rebuilt');
           continue;
         }
-        if (c.model && MODEL_UNSUPPORTED_RE.test(msg)) {
-          recordModelResult(c.model, false, msg);
-          triedModels.push(c.model);
+        if (spec.engine === 'chatgpt' && spec.model && MODEL_UNSUPPORTED_RE.test(msg)) {
+          recordModelResult(spec.model, false, msg);
+          triedModels.push(spec.model);
           const next = nextFallbackModel(triedModels);
           if (next) {
-            this.info('srv.gpt.modelSwitch', { from: c.model, to: next });
+            this.info('srv.gpt.modelSwitch', { from: spec.model, to: next });
             this.state.settings.codex.model = next;
+            if (this.state.settings.roles?.lead?.model) this.state.settings.roles.lead.model = next;
             this.save();
             continue;
           }
         }
-        if (kind === 'auth') throw new PauseSignal('srv.pause.gptAuth', { msg: oneLine(msg, 200) });
+        if (kind === 'auth') throw new PauseSignal('srv.pause.gptAuth', { msg: oneLine(msg, 200), name: spec.name });
         if (kind === 'config') throw new PauseSignal('srv.pause.gptConfig', { msg: oneLine(msg, 300) });
         if (kind === 'limit') {
           const waitMin = LIMIT_WAITS_MIN[Math.min(limitTries, LIMIT_WAITS_MIN.length - 1)];
@@ -791,9 +836,9 @@ export class Orchestrator {
         }
         throw new PauseSignal('srv.pause.gptUnparsable', { err: norm.error });
       }
-      if (c.model) recordModelResult(c.model, true);
+      if (spec.engine === 'chatgpt' && spec.model) recordModelResult(spec.model, true);
       if (consumes && shown) s.userMessages.splice(0, shown);
-      this.emit('gpt.result', { label, round, output: norm.value, durationMs: r.durationMs, usage: r.usage, model: c.model });
+      this.emit('gpt.result', { label, round, output: norm.value, durationMs: r.durationMs, usage: r.usage, model: spec.model || spec.name, engine: spec.engine });
       this.save();
       return norm.value;
     }
@@ -944,7 +989,7 @@ export class Orchestrator {
       if (s.phase !== 'work') return;
       throw new PauseSignal('srv.pause.budget', { used: this.tokensUsedM().toFixed(2), budget });
     }
-    if (!wbAuthState().loggedIn) throw new PauseSignal('srv.pause.wbLogin');
+    if (engineOf(this.cfg, 'executor') === 'workbuddy' && !wbAuthState().loggedIn) throw new PauseSignal('srv.pause.wbLogin');
     this.emit('phase', { phase: 'work', round, team: rec.team ? rec.team.map((m) => m.name) : undefined });
     const rdir = this.ensureRoundDir(round);
     fs.writeFileSync(path.join(rdir, 'instruction.md'), rec.instruction);
@@ -1135,13 +1180,24 @@ export class Orchestrator {
 
     for (;;) {
       if (this.stopRequested) throw new StopSignal();
+      const spec = roleSpec(this.cfg, 'executor');
+      const eng = engine(spec.engine);
+      setRoleNames(roleNames(this.cfg));
+      this.execFound = eng.find(this.cfg);
+      if (!this.execFound) throw new PauseSignal(spec.engine === 'workbuddy' ? 'srv.pause.noWb' : 'srv.pause.noEngine', { name: spec.name });
+      // a session belongs to one engine: after a switch, start fresh with a handover note
+      if (slot.engine && slot.engine !== spec.engine) {
+        await this.rotateSession(slot, 'srv.reason.engineChanged');
+        prompt = member ? firstPrompt : P.workerPrompt({ round, instruction, workdir: s.workdir, handoff: slot.handoff });
+      }
+      slot.engine = spec.engine;
       setInFlight(true);
       s.stats.wbCalls += 1;
       this.save();
-      this.emit('wb.start', { round, ...tag, resume: slot.sessionStarted, sessionId: slot.sessionId, continuation: agg.calls > 0, prompt: truncate(prompt, 24_000) });
+      this.emit('wb.start', { round, ...tag, resume: slot.sessionStarted, sessionId: slot.sessionId, continuation: agg.calls > 0, prompt: truncate(prompt, 24_000), engine: spec.engine });
       const live = this.liveWriter(round, member);
-      const r = await runWorkBuddyTurn({
-        ...this.wbCallOptions({ round, member, cwd, sysFile, extraDirs }),
+      const r = await eng.exec({
+        ...this.execCallOptions({ round, member, cwd, sysFile, extraDirs }),
         sessionId: slot.sessionId,
         resume: slot.sessionStarted,
         prompt,
@@ -1173,6 +1229,8 @@ export class Orchestrator {
         slot.sessionStarted = true;
         slot.handoff = null;
       }
+      // engines that name their own sessions (ChatGPT, DeepSeek) report the id to resume
+      if (r.sessionId && r.sawInit) slot.sessionId = r.sessionId;
       toolCalls.push(...r.toolCalls);
       writeJsonAtomic(toolsFile, toolCalls);
       agg.calls += 1;
@@ -1195,7 +1253,7 @@ export class Orchestrator {
         agg.usage.input += usage.input;
         agg.usage.cached += usage.cached;
         agg.usage.output += usage.output;
-        recordUsage({ agent: 'workbuddy', model: r.model || wbc.model, input: usage.input, cached: usage.cached, output: usage.output, runId: this.id, kind: member ? `team:${member}` : 'round' });
+        recordUsage({ agent: 'workbuddy', engine: spec.engine, model: r.model || spec.model, input: usage.input, cached: usage.cached, output: usage.output, runId: this.id, kind: member ? `team:${member}` : 'round' });
       }
       onAgg(agg);
       this.save();
@@ -1212,8 +1270,8 @@ export class Orchestrator {
       const kind = r.errorKind;
       const errText = r.errors.join('\n');
       if (kind === 'aborted' || this.stopRequested) throw new StopSignal();
-      if (kind === 'auth') throw new PauseSignal('srv.pause.wbAuth');
-      if (kind === 'credits') throw new PauseSignal('srv.pause.wbCredits', { msg: oneLine(errText, 200) });
+      if (kind === 'auth') throw new PauseSignal(spec.engine === 'workbuddy' ? 'srv.pause.wbAuth' : 'srv.pause.execAuth', { name: spec.name, msg: oneLine(errText, 200) });
+      if (kind === 'credits') throw new PauseSignal('srv.pause.wbCredits', { msg: oneLine(errText, 200), name: spec.name });
       if (!rotated && (kind === 'context' || (slot.sessionStarted && LOST_WB_SESSION_RE.test(errText)))) {
         rotated = true;
         await this.rotateSession(slot, kind === 'context' ? 'srv.reason.context' : 'srv.reason.lostSession');

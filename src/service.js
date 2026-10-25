@@ -6,6 +6,7 @@ import path from 'node:path';
 import { brandName } from './brand.js';
 import { codexInfo, codexRateLimitsFromRollouts, codexRateLimitsLive, defaultCodexModel, findCodex, listCodexModels, runCodexTurn } from './codex.js';
 import { DEFAULTS, deepMerge, loadConfig, replaceConfig, saveConfig, taskSettings } from './config.js';
+import { allStatus, engine, roleNames, roleSpec } from './engines/index.js';
 import { deleteCommand as delCmd, expandCommand, listCommands, saveCommand } from './commands.js';
 import { GLOBAL_HOOKS_DIR, HOOK_TYPES, readHookDir, writeHookType } from './hooks.js';
 import { clockText, currentLang, fmtDuration, locale, t } from './i18n.js';
@@ -25,6 +26,90 @@ import { listTemplates, saveTemplate } from './templates.js';
 import { usageReport } from './usage.js';
 import { baseChildEnv, execText, findExecutable, nowIso, oneLine, readJson, runProcess, truncate, writeJsonAtomic } from './util.js';
 import { findWorkBuddy, listWbModels, refreshWbCloudConfig, wbAuthState, wbCloudConfig, wbLogin, wbLogout } from './workbuddy.js';
+
+// ---------- engines: sign-in state of every engine, cached briefly (each check starts the engine's CLI) ----------
+
+let engineCache = null;
+
+export async function engineStatus({ force = false } = {}) {
+  if (!force && engineCache && Date.now() - engineCache.at < 60_000) return engineCache.value;
+  const value = await allStatus(loadConfig());
+  engineCache = { at: Date.now(), value };
+  return value;
+}
+
+const signIns = new Map();
+
+function publicSignIn(id) {
+  const j = signIns.get(id);
+  if (!j) return null;
+  const { state, authUrl, message, startedAt, account, canPaste } = j;
+  return { engine: id, state, authUrl: authUrl || '', message: message || '', startedAt, account: account || '', canPaste: Boolean(canPaste) };
+}
+
+/** Starts an engine's own sign-in (browser); one attempt per engine at a time. */
+export function startSignIn(id) {
+  const eng = engine(id);
+  if (!eng) throw new Error(`unknown engine: ${id}`);
+  const cur = signIns.get(id);
+  if (cur && ['starting', 'waiting'].includes(cur.state)) return publicSignIn(id);
+  const ctrl = new AbortController();
+  const job = { state: 'starting', startedAt: new Date().toISOString(), ctrl };
+  signIns.set(id, job);
+  Promise.resolve()
+    .then(() => eng.login(loadConfig(), { signal: ctrl.signal, onUpdate: (u) => Object.assign(job, u) }))
+    .then((r) => Object.assign(job, r?.ok ? { state: 'done', account: r.account || '' } : { state: ctrl.signal.aborted ? 'cancelled' : 'error', message: r?.error || '' }))
+    .catch((err) => Object.assign(job, { state: 'error', message: err.message }))
+    .finally(() => {
+      engineCache = null;
+    });
+  return publicSignIn(id);
+}
+
+export function getSignIn(id) {
+  return publicSignIn(id) || { engine: id, state: 'idle' };
+}
+
+export function cancelSignIn(id) {
+  const j = signIns.get(id);
+  j?.ctrl?.abort();
+  if (j && ['starting', 'waiting'].includes(j.state)) j.state = 'cancelled';
+  return getSignIn(id);
+}
+
+/** Claude: the code shown by the sign-in page when its localhost callback could not be reached. */
+export function sendSignInCode(id, code) {
+  if (id !== 'claude' || !engine('claude').sendCode(code)) throw new Error(t('srv.acct.noPending'));
+  return getSignIn(id);
+}
+
+export async function signOut(id) {
+  const eng = engine(id);
+  if (!eng) throw new Error(`unknown engine: ${id}`);
+  await eng.logout(loadConfig());
+  if (id === 'deepseek') engine('deepseek').setApiKey('');
+  engineCache = null;
+  return engineStatus({ force: true });
+}
+
+export function setEngineKey(id, key) {
+  if (id !== 'deepseek') throw new Error(`no API keys for ${id}`);
+  engine('deepseek').setApiKey(key);
+  engineCache = null;
+  return engineStatus({ force: true });
+}
+
+function engineModels(cfg) {
+  const out = {};
+  for (const id of ['chatgpt', 'claude', 'deepseek', 'workbuddy']) {
+    try {
+      out[id] = { models: engine(id).models(cfg), defaultModel: engine(id).defaultModel(cfg), efforts: engine(id).EFFORTS || [] };
+    } catch {
+      out[id] = { models: [], defaultModel: '', efforts: [] };
+    }
+  }
+  return out;
+}
 
 export async function getEnvironment() {
   const cfg = loadConfig();
@@ -50,6 +135,8 @@ export async function getEnvironment() {
       modelsUpdatedAt: wbModels.updatedAt,
       modelsRefreshing: Boolean(modelRefresh),
     },
+    engines: await engineStatus(),
+    engineModels: engineModels(cfg),
     subagents: listSubagents({ ...cfg, subagents: { ...cfg.subagents, disabled: [] } }).map((a) => ({ id: a.id, name: a.name, description: a.description, source: a.source, enabled: !(cfg.subagents?.disabled || []).includes(a.id) })),
     login: loginJob ? publicLoginJob() : null,
     home: os.homedir(),
@@ -258,8 +345,9 @@ let quotaInflight = null;
 export async function getGptQuota({ force = false } = {}) {
   if (!force && quotaCache && Date.now() - quotaCache.fetchedAt < 120_000) return quotaCache.value;
   quotaInflight ??= (async () => {
-    const found = findCodex(loadConfig().codex.path);
-    const value = (await codexRateLimitsLive(found).catch(() => null)) || codexRateLimitsFromRollouts();
+    const cfg = loadConfig();
+    const found = findCodex(cfg.codex.path);
+    const value = (await codexRateLimitsLive(found, { home: cfg.codex.home }).catch(() => null)) || codexRateLimitsFromRollouts({ home: cfg.codex.home });
     quotaCache = { fetchedAt: Date.now(), value };
     return value;
   })().finally(() => {
@@ -440,30 +528,37 @@ function saveAside(id, rec) {
 }
 
 function writeAdvisorPrompt(dir, workdir, settings) {
-  const { text } = buildSystemPrompt('advisor', { settings, workdir });
+  const { text } = buildSystemPrompt('advisor', { settings, workdir, names: roleNames(settings) });
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'advisor-system.md');
   fs.writeFileSync(file, text);
   return file;
 }
 
-/** Runs a read-only GPT turn in the background. onDone(result) persists the outcome. */
+/** Runs a read-only turn of the lead's engine in the background. onDone(result) persists the outcome. */
 function runAdvisor({ jobId, prompt, cwd, settings, dir, kind, onDone }) {
-  const found = findCodex(settings?.codex?.path || loadConfig().codex.path);
-  if (!found) throw new Error(t('srv.codex.missing'));
+  // a task from before roles existed ran with GPT as its lead
+  const cfg = settings ? deepMerge(loadConfig(), { roles: DEFAULTS.roles, ...settings }) : loadConfig();
+  const spec = roleSpec(cfg, 'lead');
+  const eng = engine(spec.engine);
+  const found = eng.find(cfg);
+  if (!found) throw new Error(spec.engine === 'chatgpt' ? t('srv.codex.missing') : t('srv.pause.noEngine', { name: spec.name }));
   const live = { steps: 0, last: '' };
   jobs.set(jobId, { kind, live });
-  const cfgNow = loadConfig();
-  const model = settings?.codex?.model || cfgNow.codex.model || defaultCodexModel(settings?.codex?.home || cfgNow.codex.home);
-  runCodexTurn({
+  const model = spec.model || (spec.engine === 'chatgpt' ? defaultCodexModel(cfg.codex?.home) : '');
+  // Claude's sandbox lets Bash write in its working directory, so the advisor works from a scratch folder
+  const workDir = spec.engine === 'claude' ? path.join(dir, `${jobId}-scratch`) : cwd;
+  fs.mkdirSync(workDir, { recursive: true });
+  eng.lead({
+    cfg,
     found,
     prompt,
-    cwd,
+    cwd: workDir,
+    newId: crypto.randomUUID(),
     model,
-    effort: 'medium',
+    effort: spec.engine === 'deepseek' ? 'high' : 'medium',
     sandbox: 'read-only',
-    codexHome: settings?.codex?.home || cfgNow.codex.home || '',
-    instructionsFile: writeAdvisorPrompt(dir, cwd, settings || loadConfig()),
+    systemFile: writeAdvisorPrompt(dir, cwd, cfg),
     outFile: path.join(dir, `${jobId}.md`),
     rawFile: path.join(dir, `${jobId}.jsonl`),
     timeoutMs: 15 * 60_000,
@@ -471,11 +566,15 @@ function runAdvisor({ jobId, prompt, cwd, settings, dir, kind, onDone }) {
       live.steps += 1;
       if (e.itemType === 'command_execution' && e.command) live.last = `$ ${oneLine(e.command, 120)}`;
       else if (e.itemType === 'reasoning' && e.text) live.last = oneLine(e.text, 120);
+      else if (e.itemType === 'tool' && e.text) live.last = oneLine(e.text, 120);
     },
-  }).then((r) => onDone({ ok: r.ok, text: r.text || '', error: r.ok ? null : oneLine(r.error?.message || 'failed', 300), durationMs: r.durationMs, model }))
-    .catch((err) => onDone({ ok: false, text: '', error: oneLine(err.message, 300), model }))
-    .finally(() => jobs.delete(jobId));
-  return model;
+  }).then((r) => onDone({ ok: r.ok, text: r.text || '', error: r.ok ? null : oneLine(r.error?.message || 'failed', 300), durationMs: r.durationMs, model: model || spec.name }))
+    .catch((err) => onDone({ ok: false, text: '', error: oneLine(err.message, 300), model: model || spec.name }))
+    .finally(() => {
+      jobs.delete(jobId);
+      if (workDir !== cwd) fs.rmSync(workDir, { recursive: true, force: true });
+    });
+  return model || spec.name;
 }
 
 export function listAsides(id) {
@@ -924,7 +1023,7 @@ export function startLooperIfNeeded() {
 
 // ---------- profiles (snow-cli /profiles): named sets of model and run settings ----------
 
-const PROFILE_KEYS = ['codex', 'workbuddy', 'loop', 'team', 'agents'];
+const PROFILE_KEYS = ['roles', 'codex', 'claude', 'deepseek', 'workbuddy', 'loop', 'team', 'agents'];
 
 export function saveProfile({ name, settings }) {
   const n = String(name || '').trim().slice(0, 40);
@@ -933,9 +1032,11 @@ export function saveProfile({ name, settings }) {
   const src = settings && typeof settings === 'object' ? settings : cfg;
   const picked = {};
   for (const k of PROFILE_KEYS) if (src[k]) picked[k] = src[k];
-  for (const k of ['path', 'appPath']) {
-    if (picked.codex) delete picked.codex[k];
-    if (picked.workbuddy) delete picked.workbuddy[k];
+  // where the programs live is a property of this Mac, not of a profile
+  for (const sec of ['codex', 'claude', 'deepseek', 'workbuddy']) {
+    if (!picked[sec]) continue;
+    picked[sec] = { ...picked[sec] };
+    for (const k of ['path', 'appPath', 'home']) delete picked[sec][k];
   }
   const list = [...(cfg.profiles?.list || [])];
   const existing = list.find((p) => p.name === n);
