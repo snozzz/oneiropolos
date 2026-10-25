@@ -86,10 +86,12 @@ export class Orchestrator {
   }
 
   save() {
+    if (this.orphaned) return;
     writeState(this.state);
   }
 
   emit(kind, data = {}) {
+    if (this.orphaned) return;
     const ev = { kind, ...data };
     appendEvent(this.id, ev);
     try {
@@ -358,6 +360,12 @@ export class Orchestrator {
       s.stopHookAsked = false;
     }
     this.timer = setInterval(() => {
+      // the task's folder was deleted under us: nobody can see or control this task any more, so end quietly
+      if (!fs.existsSync(this.dir)) {
+        this.orphaned = true;
+        this.requestStop();
+        return;
+      }
       this.pollControl().catch(() => {});
     }, 1000);
     try {
