@@ -14,7 +14,6 @@ import { loadMcp, mcpSummary, saveMcp } from './mcp.js';
 import { readNotebook, writeNotebook } from './notebook.js';
 import { DATA_DIR, ROOT, ensureDirs } from './paths.js';
 import * as P from './prompts.js';
-import { purgeStatus } from './purge.js';
 import { BUILTIN_RULES, decideApproval, matchSensitive, pendingApprovals, safetyRules } from './safety.js';
 import { createSkill, listSkills, readSkill } from './skills.js';
 import { Snapshotter } from './snapshot.js';
@@ -31,14 +30,13 @@ export async function getEnvironment() {
   const cfg = loadConfig();
   const codex = findCodex(cfg.codex.path);
   const wb = findWorkBuddy(cfg.workbuddy.appPath);
-  const cinfo = await codexInfo(codex).catch((err) => ({ installed: !!codex, loggedIn: false, error: err.message }));
+  const cinfo = await codexInfo(codex, cfg.codex.home).catch((err) => ({ installed: !!codex, loggedIn: false, error: err.message }));
   const auth = wbAuthState();
   const wbModels = wb ? listWbModels(wb) : { models: [], source: 'none', updatedAt: null };
   return {
     config: cfg,
     lang: currentLang(),
-    purge: purgeStatus(cfg),
-    codex: { ...cinfo, models: listCodexModels(), defaultModel: cfg.codex.model || defaultCodexModel() },
+    codex: { ...cinfo, models: listCodexModels(cfg.codex.home), defaultModel: cfg.codex.model || defaultCodexModel(cfg.codex.home) },
     workbuddy: {
       installed: !!wb,
       app: wb?.app || null,
@@ -455,7 +453,8 @@ function runAdvisor({ jobId, prompt, cwd, settings, dir, kind, onDone }) {
   if (!found) throw new Error(t('srv.codex.missing'));
   const live = { steps: 0, last: '' };
   jobs.set(jobId, { kind, live });
-  const model = settings?.codex?.model || loadConfig().codex.model || defaultCodexModel();
+  const cfgNow = loadConfig();
+  const model = settings?.codex?.model || cfgNow.codex.model || defaultCodexModel(settings?.codex?.home || cfgNow.codex.home);
   runCodexTurn({
     found,
     prompt,
@@ -463,6 +462,7 @@ function runAdvisor({ jobId, prompt, cwd, settings, dir, kind, onDone }) {
     model,
     effort: 'medium',
     sandbox: 'read-only',
+    codexHome: settings?.codex?.home || cfgNow.codex.home || '',
     instructionsFile: writeAdvisorPrompt(dir, cwd, settings || loadConfig()),
     outFile: path.join(dir, `${jobId}.md`),
     rawFile: path.join(dir, `${jobId}.jsonl`),

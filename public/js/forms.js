@@ -105,6 +105,8 @@ function settingsFormHtml(p, st, opts = {}) {
       formRow(t('form.model'), `<select id="${p}-gpt-model">${gptOptions}</select>`, { forId: `${p}-gpt-model`, hintKey: 'gpt-model' }),
       formRow(t('form.reasoning'), `<select id="${p}-gpt-effort"></select>`, { forId: `${p}-gpt-effort`, hint: t('form.reasoningHint') }),
       formRow(t('form.webSearch'), switchControl(`${p}-web`, Boolean(st.codex?.webSearch), t('form.webSearchSwitch')), { hint: t('form.webSearchHint') }),
+      formRow(t('form.codexHome'), `<input type="text" id="${p}-codex-home" value="${esc(st.codex?.home || '')}" placeholder="~/.codex" spellcheck="false">`, { forId: `${p}-codex-home`, hint: t('form.codexHomeHint') }),
+      formRow(t('form.gptContext'), numberControl(`${p}-codex-ctx`, st.codex?.contextWindow || 0, t('form.tokens')), { forId: `${p}-codex-ctx`, hint: t('form.gptContextHint') }),
     ], { emblem: 'gpt' }),
     formGroup(`${t('form.wbGroup')}<span class="gt-side">${esc(modelsSourceText())}${app.env?.workbuddy.loggedIn ? ` · <button class="link" type="button" data-refresh-models>${esc(t('form.refresh'))}</button>` : ''}</span>`, [
       formRow(t('form.model'), `<select id="${p}-wb-model">${wbOptions}</select>`, { forId: `${p}-wb-model`, hintKey: 'wb-model' }),

@@ -84,14 +84,15 @@ node bin/wbloop.js run -d ~/projects/myproj --check "npm test" "实现……，�
 
 ### 新建任务
 
-1. 在首页输入框里写清楚**目标、技术约束、验收标准**。`@` 引用工作目录里的文件，`#` 点名一个子代理。下方几个按钮：
-   - **工作目录**：选一个专门的项目文件夹（最好是 git 仓库）。
-   - **模型与参数**：GPT 和 WorkBuddy 各自的模型与思考强度、WorkBuddy 的上下文窗口、GPT 联网搜索、给 WorkBuddy 的额外目录、团队模式与人数、任务模式、回复语言、最多轮数、token 预算、**验收命令**、决策方式、独立验收、敏感命令策略。
-   - **团队**：单人、自动（GPT 可以把一轮拆给几个队友）、总是。
-   - **模式**：普通、**先出计划**（你批准 GPT 的计划之前不会改任何文件）、**漏洞排查**（审查你自己的代码：每个发现都用最小的复现来验证，并附修复建议）。
-   - **开始时间**：立即开始，或定在今晚 23:00、深夜、早上、任意时刻；选的 WorkBuddy 模型有夜间折扣时，还会多一个“折扣开始时”。到点前任务只是等待（期间 Mac 不会空闲休眠），也可以随时“立即开始”。
+1. 在首页输入框里写清楚**目标、技术约束、验收标准**。`@` 引用工作目录里的文件，`#` 点名一个子代理，`/` 打开命令。输入框底部：
+   - **工作目录**（文件夹按钮）：选一个专门的项目文件夹（最好是 git 仓库）。点开会列出最近用过的目录，“选择其他目录…”打开文件夹选择器。
+   - **模型与参数**（右侧的模型名）：GPT 和 WorkBuddy 各自的模型与思考强度、WorkBuddy 的上下文窗口、GPT 联网搜索、给 WorkBuddy 的额外目录、团队模式与人数、任务模式、回复语言、最多轮数、token 预算、**验收命令**、决策方式、独立验收、敏感命令策略。
+   - **+**：模板和三个选项。改过的选项会以小标签显示在按钮上方：点标签可以再改，点 × 恢复默认。
+     - **团队模式**：单人、自动（GPT 可以把一轮拆给几个队友）、总是。
+     - **任务模式**：普通、**先出计划**（你批准 GPT 的计划之前不会改任何文件）、**漏洞排查**（审查你自己的代码：每个发现都用最小的复现来验证，并附修复建议）。
+     - **开始时间**：立即开始，或定在今晚 23:00、深夜、早上、任意时刻；选的 WorkBuddy 模型有夜间折扣时，还会多一个“折扣开始时”。到点前任务只是等待（期间 Mac 不会空闲休眠），也可以随时“立即开始”。
 2. 点金色箭头（或 ⌘↩）开始。
-3. **模板**：输入框下面有新功能、修 Bug、新项目、重构、性能优化、补测试、审查修复、生成 AGENTS.md（`/init`）、**深度调研**、安全审计、并行协作。点一下填入，把带【】的地方换成自己的内容，按 Tab 跳到下一处；还有没替换的【】时点开始会提醒。写好的目标可以点“存为模板”。
+3. **模板**（在 **+** 里，或输入 `/template`）：新功能、修 Bug、新项目、重构、性能优化、补测试、审查修复、生成 AGENTS.md（`/init`）、**深度调研**、安全审计、并行协作。选一个填入，把带【】的地方换成自己的内容，按 Tab 跳到下一处；还有没替换的【】时点开始会提醒。列表最后的“存为模板”可以把写好的目标存下来。
 
 参数说明：
 
@@ -157,7 +158,7 @@ node bin/wbloop.js run -d ~/projects/myproj --check "npm test" "实现……，�
 
 对话页：`/cut` `/btw` `/approve` `/pause` `/resume` `/stop` `/plan` `/diff` `/rollback` `/review` `/export` `/copy` `/compact` `/team` `/yolo` `/rounds 40` `/budget 20` `/check npm test` `/skills` `/agents` `/todo` `/gitline` `/new-prompt` `/loop` `/notebook` `/board` `/usage` `/tool-display` `/settings` `/help`，以及你的自定义命令。
 
-首页：`/dir` `/params` `/team` `/mode` `/init` `/deepresearch <问题>` `/gitline` `/new-prompt` `/review` `/skills` `/agents` `/todo` `/loop` `/notebook` `/usage` `/mcp` `/hooks` `/settings` `/help`。
+首页：`/dir` `/params` `/template` `/team` `/mode` `/init` `/deepresearch <问题>` `/gitline` `/new-prompt` `/review` `/skills` `/agents` `/todo` `/loop` `/notebook` `/usage` `/mcp` `/hooks` `/settings` `/help`。
 
 ## 设置
 
@@ -176,22 +177,6 @@ node bin/wbloop.js quota | usage 7d | agents | prompt executor
 ```
 
 其余：`wbloop list / show / tail / msg / pause / stop / resume / compact / export <ID|last>`，`wbloop config key=value`。前台运行时直接输入文字就是留言；`/cut ……`、`/approve`、`/allow`、`/deny`、`/compact`、`/pause`、`/resume`、`/stop` 也都能用。
-
-## 规则集覆盖（purge）
-
-GPT 手里的“甲”不在 codex 里，在这程序自己的系统提示词里。想换一套自带的规矩，不必改代码：把一个 Markdown 文件挂到 `settings.purge`，它会被拼进 lead / reviewer 的系统提示，任务头部随即出现一个 **PURGE** 标识（暗色＝已开启但没生效，实心＝这一次真的注入了）。
-
-```bash
-wbloop config purge.enabled=true                      # 默认槽位：~/.wbloop/purge.md
-wbloop config purge.enabled=true purge.file=/path/to/ruleset.md
-wbloop config purge.mode=replace                      # 丢掉内置提示，只留环境块
-wbloop config purge.roles='["lead","reviewer"]'       # 谁收到（默认这两个）
-```
-
-- 程序**不带任何规则集内容**：文件缺失或为空就是空操作，标识保持暗色，提示词一字不改。`examples/purge.md` 只是一份格式示例。
-- 注入前会整体替换 codex 的 base instructions（`-c model_instructions_file`），不再额外叠 codex 自己的基础提示；`--ignore-user-config` 仍然生效，`~/.codex/config.toml` 不参与。
-- 每一轮的最终提示词都落在 `~/.wbloop/runs/<ID>/prompts/<role>.md`，可以逐字核对当次到底注入了什么；设置里的“提示词预览”也会把它算进去。
-- 只影响 GPT 的提示词层：JSON 回复契约、只读沙箱、可用工具都不变；WorkBuddy 那一侧和它的命令审批（`safety`）也不受影响。dsh-purge 的靶场门禁不属于这一层，需要限制联网目标时得自己加钩子。
 
 ## 适合长时间运行的设计
 

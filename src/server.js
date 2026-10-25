@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { findCodex, startCodexLogin } from './codex.js';
 import { loadConfig, saveConfig } from './config.js';
-import { t } from './i18n.js';
+import { currentLang, t } from './i18n.js';
 import { listSkills } from './skills.js';
 import { ROOT, SERVER_INFO_PATH, ensureDirs } from './paths.js';
 import * as svc from './service.js';
@@ -68,7 +68,7 @@ function serveStatic(pathname, res, token) {
   if (rel === 'index.html') {
     const ui = loadConfig().ui || {};
     const theme = ui.theme === 'light' || ui.theme === 'dark' ? ui.theme : 'system';
-    const lang = ['en', 'zh', 'ja'].includes(ui.language) ? ui.language : 'en';
+    const lang = currentLang(); // ui.language, or WBLOOP_LANG when set — the same language as the server's own text
     body = Buffer.from(body.toString('utf8').replace('__WBLOOP_TOKEN__', token).replace('__WBLOOP_THEME__', theme).replace('__WBLOOP_LANG__', lang));
   }
   res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });

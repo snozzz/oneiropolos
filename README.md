@@ -84,14 +84,15 @@ Tasks are on the left (running ones first), the conversation on the right. **You
 
 ### A new task
 
-1. Write the **goal, constraints and acceptance criteria** in the box on the home page. `@` mentions a file in the working directory, `#` asks for a sub-agent. The chips below it:
-   - **Working directory** — a dedicated project folder (ideally a git repository).
-   - **Models & parameters** — GPT and WorkBuddy models and reasoning effort, WorkBuddy's context window, GPT web search, extra folders for WorkBuddy, Team Mode and its size, task mode, reply language, maximum rounds, token budget, **check command**, autonomy, independent review and the sensitive-command policy.
-   - **Team** — Solo, Auto (GPT may split a round among teammates) or Always.
-   - **Mode** — Normal, **Plan first** (nothing changes until you approve GPT's plan) or **Vulnerability hunting** (a security review of code you own: each finding verified with a minimal proof and reported with a fix).
-   - **Start** — now, tonight at 23:00, late night, morning, any time; when the chosen WorkBuddy model has a night discount there is also "when the discount starts". Until then the task just waits (the Mac doesn't idle-sleep), and "Start now" is always available.
+1. Write the **goal, constraints and acceptance criteria** in the box on the home page. `@` mentions a file in the working directory, `#` asks for a sub-agent, `/` opens the commands. Along the bottom of the box:
+   - **Working directory** (the folder button) — a dedicated project folder, ideally a git repository. It lists your recent folders; "Choose another folder…" opens the folder picker.
+   - **Models & parameters** (the model names on the right) — GPT and WorkBuddy models and reasoning effort, WorkBuddy's context window, GPT web search, extra folders for WorkBuddy, Team Mode and its size, task mode, reply language, maximum rounds, token budget, **check command**, autonomy, independent review and the sensitive-command policy.
+   - **+** — templates and three options. An option changed from its default shows as a chip above the buttons: click the chip to change it, or its × to go back to the default.
+     - **Team Mode** — Solo, Auto (GPT may split a round among teammates) or Always.
+     - **Task mode** — Normal, **Plan first** (nothing changes until you approve GPT's plan) or **Vulnerability hunting** (a security review of code you own: each finding verified with a minimal proof and reported with a fix).
+     - **Start** — now, tonight at 23:00, late night, morning, any time; when the chosen WorkBuddy model has a night discount there is also "when the discount starts". Until then the task just waits (the Mac doesn't idle-sleep), and "Start now" is always available.
 2. Click the gold arrow (or ⌘↩).
-3. **Templates** below the box: New feature, Fix a bug, New project, Refactor, Performance, Add tests, Review & fix, Write AGENTS.md (`/init`), **Deep research**, Security audit, Parallel work. Click one, replace the `[[…]]` parts and press Tab to jump to the next one; Start reminds you if any are left. Your own goals can be saved as templates.
+3. **Templates** (under **+**, or `/template`): New feature, Fix a bug, New project, Refactor, Performance, Add tests, Review & fix, Write AGENTS.md (`/init`), **Deep research**, Security audit, Parallel work. Pick one, replace the `[[…]]` parts and press Tab to jump to the next one; Start reminds you if any are left. "Save as template" at the end of the list keeps the goal you wrote.
 
 Notes on the parameters:
 
@@ -157,7 +158,7 @@ Not ported, on purpose: terminal-only features (buddy pets, games, pixel editor,
 
 In a task: `/cut` `/btw` `/approve` `/pause` `/resume` `/stop` `/plan` `/diff` `/rollback` `/review` `/export` `/copy` `/compact` `/team` `/yolo` `/rounds 40` `/budget 20` `/check npm test` `/skills` `/agents` `/todo` `/gitline` `/new-prompt` `/loop` `/notebook` `/board` `/usage` `/tool-display` `/settings` `/help`, plus your own commands.
 
-On the home page: `/dir` `/params` `/team` `/mode` `/init` `/deepresearch <question>` `/gitline` `/new-prompt` `/review` `/skills` `/agents` `/todo` `/loop` `/notebook` `/usage` `/mcp` `/hooks` `/settings` `/help`.
+On the home page: `/dir` `/params` `/template` `/team` `/mode` `/init` `/deepresearch <question>` `/gitline` `/new-prompt` `/review` `/skills` `/agents` `/todo` `/loop` `/notebook` `/usage` `/mcp` `/hooks` `/settings` `/help`.
 
 ## Settings
 
@@ -176,22 +177,6 @@ node bin/wbloop.js quota | usage 7d | agents | prompt executor
 ```
 
 Also: `wbloop list / show / tail / msg / pause / stop / resume / compact / export <ID|last>`, `wbloop config key=value`. In a foreground run, type to leave a message; `/cut …`, `/approve`, `/allow`, `/deny`, `/compact`, `/pause`, `/resume`, `/stop` work there too.
-
-## Ruleset overlay (purge)
-
-GPT's "armour" does not live in codex — it lives in this program's own system prompt. To swap in a ruleset of your own you don't need to touch the code: point `settings.purge` at a Markdown file and it is composed into the lead/reviewer prompt, with a **PURGE** badge in the task header (dim = switched on but not in effect, solid = actually injected for this turn).
-
-```bash
-wbloop config purge.enabled=true                      # default slot: ~/.wbloop/purge.md
-wbloop config purge.enabled=true purge.file=/path/to/ruleset.md
-wbloop config purge.mode=replace                      # drop the built-in prompt, keep the environment block
-wbloop config purge.roles='["lead","reviewer"]'       # who receives it (those two by default)
-```
-
-- The program **ships no ruleset content**: a missing or empty file is a no-op, the badge stays dim, the prompt is untouched. `examples/purge.md` is a shape reference only.
-- Composition replaces codex's base instructions wholesale (`-c model_instructions_file`), so codex's own scaffolding is not stacked on top; `--ignore-user-config` still applies, `~/.codex/config.toml` plays no part.
-- Every round's final prompt is kept at `~/.wbloop/runs/<ID>/prompts/<role>.md`, so you can check verbatim what was sent; the prompt preview in Settings includes it too.
-- It only touches GPT's prompt layer: the JSON reply contract, the read-only sandbox and the tool list are unchanged, and WorkBuddy plus its command approvals (`safety`) are unaffected. dsh-purge's lab gate is not part of this layer — if you need outbound targets restricted, add a hook.
 
 ## Built for long runs
 

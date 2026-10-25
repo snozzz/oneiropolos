@@ -8,6 +8,12 @@ import { baseChildEnv, execText, findExecutable, isExecutable, oneLine, readJson
 
 const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 
+/** Which codex home a configured path means: empty = $CODEX_HOME, else ~/.codex. */
+export function codexHomeOf(configured = '') {
+  const want = String(configured || '').trim();
+  return want ? path.resolve(want) : CODEX_HOME;
+}
+
 export function findCodex(configuredPath = '') {
   const candidates = [];
   if (configuredPath) candidates.push(configuredPath);
@@ -23,16 +29,19 @@ export function findCodex(configuredPath = '') {
   return null;
 }
 
-export async function codexEnv(found) {
+export async function codexEnv(found, home = '') {
   const env = await baseChildEnv(found ? [found.binDir] : []);
   // an API key in the user's shell must not override the ChatGPT subscription login
   delete env.OPENAI_API_KEY;
+  // `codex.home` runs codex against its own home (config.toml, auth, hooks) instead of ~/.codex
+  const dir = String(home || '').trim();
+  if (dir) env.CODEX_HOME = path.resolve(dir);
   return env;
 }
 
-export async function codexInfo(found) {
+export async function codexInfo(found, home = '') {
   if (!found) return { installed: false, loggedIn: false };
-  const env = await codexEnv(found);
+  const env = await codexEnv(found, home);
   const [ver, status] = await Promise.all([
     execText(found.path, ['--version'], { env, timeoutMs: 15_000 }),
     execText(found.path, ['login', 'status'], { env, timeoutMs: 15_000 }),
@@ -48,8 +57,12 @@ export async function codexInfo(found) {
   };
 }
 
-export function listCodexModels() {
-  const cache = readJson(path.join(CODEX_HOME, 'models_cache.json'), null);
+// Hidden by the CLI's own picker, but worth selecting here: it is Codex's approval-review model and, on this
+// account, the one that came through the upstream cyber filter where gpt-5.6-sol did not.
+const ALWAYS_SELECTABLE = new Set(['codex-auto-review']);
+
+export function listCodexModels(home = '') {
+  const cache = readJson(path.join(codexHomeOf(home), 'models_cache.json'), null);
   const models = Array.isArray(cache?.models) ? cache.models : [];
   const bad = readJson(path.join(DATA_DIR, 'codex-models.json'), {})?.bad || {};
   return models
@@ -58,7 +71,7 @@ export function listCodexModels() {
     .map((m) => ({
       id: m.slug,
       name: m.display_name || m.slug,
-      visible: m.visibility !== 'hide',
+      visible: m.visibility !== 'hide' || ALWAYS_SELECTABLE.has(m.slug),
       efforts: (m.supported_reasoning_levels || []).map((x) => (typeof x === 'string' ? x : x.effort)).filter(Boolean),
       defaultEffort: m.default_reasoning_level || '',
       contextWindow: m.context_window || null,
@@ -98,9 +111,9 @@ export function unavailableModels() {
   return Object.keys(readModelHealth().bad || {});
 }
 
-export function defaultCodexModel() {
+export function defaultCodexModel(home = '') {
   const health = readModelHealth();
-  const visible = listCodexModels().filter((m) => m.visible);
+  const visible = listCodexModels(home).filter((m) => m.visible);
   if (health.good && (!visible.length || visible.some((m) => m.id === health.good))) return health.good;
   const bad = new Set(Object.keys(health.bad || {}));
   return visible.find((m) => !bad.has(m.id))?.id || '';
@@ -172,7 +185,7 @@ function condenseItem(phase, item) {
 export async function runCodexTurn(opts) {
   const {
     found, threadId, prompt, cwd, model, effort, sandbox = 'read-only', schemaPath,
-    outFile, rawFile, onEvent, signal, timeoutMs, instructionsFile, webSearch = false, extraArgs = [],
+    outFile, rawFile, onEvent, signal, timeoutMs, instructionsFile, webSearch = false, extraArgs = [], codexHome = '',
   } = opts;
   if (!found) throw new Error(t('srv.codex.missing'));
   const args = ['exec'];
@@ -205,7 +218,7 @@ export async function runCodexTurn(opts) {
 
   const res = await runProcess(found.path, args, {
     cwd,
-    env: await codexEnv(found),
+    env: await codexEnv(found, codexHome),
     input: prompt,
     signal,
     timeoutMs,

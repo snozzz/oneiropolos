@@ -1,9 +1,9 @@
-// Home: write the goal, pick the directory, settings, team and mode, templates, tasks in progress.
-import { $, ACTIVE, actions, api, app, esc, firstLine, fmtRelative, merge, native, nativeCall, shortPath, tPhase, tStatus, toast } from './core.js';
+// Home: a verse and the goal box. The box holds the working directory, the models, and a "+" menu with the rest
+// (templates, Team Mode, task mode, start time); options that differ from the defaults show as small chips.
+import { $, actions, api, app, esc, firstLine, fmtClock, merge, native, nativeCall, shortPath, toast } from './core.js';
 import { ICON, ORNAMENT, TEMPLATE_ICON, pickQuote } from './brand.js';
 import { autosize, enhanceComposer } from './composer.js';
 import { t } from './i18n.js';
-import { tailPath } from './thread.js';
 import { TASK_MODES, TEAM_MODES, mountSettingsForm, openSchedulePopover, readSettingsForm, scheduleLabel, settingsSummary, wbModel } from './forms.js';
 import { closeModal, closePopover, confirmDialog, menuItem, openModal, openPopover } from './overlay.js';
 import { expandInjections } from './tools.js';
@@ -13,6 +13,8 @@ const maxGoalHeight = () => window.innerHeight * 0.46;
 let composer = null;
 let tplApplied = '';
 let placeholderAck = '';
+let starting = false;
+let chipsHtml = '';
 
 export function pickRunSettings(cfg) {
   // without a chosen GPT model use the account's default, so the UI can show a concrete name
@@ -34,62 +36,102 @@ export function renderHero() {
   const lines = q.text.length > 16 ? q.text.split(/(?<=[。；！？])|(?<=[.;!?—…])\s+(?=\S)/).filter(Boolean) : [q.text];
   quote.innerHTML = lines.map((l) => `<span class="ln">${esc(l)}</span>`).join('');
   quote.classList.toggle('long', lines.some((l) => l.length > 15));
-  $('#hero-src').innerHTML = `— ${esc(q.src)}${q.gloss ? `<span class="gloss">${esc(q.gloss)}</span>` : ''}`;
-  $('#hero-lede').textContent = t('home.lede');
+  // the gloss (original text, a note) stays out of the way: it's the tooltip of the source
+  const src = $('#hero-src');
+  src.textContent = `— ${q.src}`;
+  src.title = q.gloss || '';
+  src.classList.toggle('glossed', Boolean(q.gloss));
+}
+
+/** The one-line introduction is shown only until the first task exists. */
+export function renderLede() {
+  const lede = $('#hero-lede');
+  // Chinese and Japanese sentences are packed into lines that end at a full stop
+  const lines = [];
+  for (const part of t('home.lede').split(/(?<=[。！？])/).filter(Boolean)) {
+    if (lines.length && lines[lines.length - 1].length + part.length <= 40) lines[lines.length - 1] += part;
+    else lines.push(part);
+  }
+  lede.innerHTML = lines.map((l) => `<span class="ln">${esc(l)}</span>`).join('');
+  lede.classList.toggle('hidden', app.runs.length > 0);
+}
+
+const dirName = (d) => String(d).replace(/\/+$/, '').split('/').pop() || d;
+
+function parentShort(d) {
+  const parts = shortPath(d).replace(/\/+$/, '').split('/').slice(0, -1);
+  return parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : parts.join('/') || '/';
 }
 
 export function updateHomeChips() {
-  $('#dir-label').textContent = app.newDir ? shortPath(app.newDir) : t('home.pickDir');
-  $('#btn-pick').classList.toggle('set', Boolean(app.newDir));
-  $('#btn-pick').title = app.newDir || t('home.pickDirTitle');
+  const dir = app.newDir;
+  const pick = $('#btn-pick');
+  $('#dir-label').textContent = dir ? dirName(dir) : t('home.pickDir');
+  pick.classList.toggle('unset', !dir);
+  pick.title = dir ? shortPath(dir) : t('home.pickDirTitle');
   const st = app.newSettings;
   if (st) {
     $('#params-label').textContent = `${st.codex.model || 'GPT'} · ${wbModel(st.workbuddy.model || 'auto').name}`;
     $('#btn-params').title = settingsSummary(st);
-    const team = st.team?.mode || 'off';
-    $('#team-label').textContent = team === 'off' ? t('home.teamOff') : TEAM_MODES().find(([v]) => v === team)?.[1];
-    $('#btn-team').classList.toggle('accent', team !== 'off');
-    const mode = st.agents?.mode || 'normal';
-    $('#mode-label').textContent = TASK_MODES().find(([v]) => v === mode)?.[1] || mode;
-    $('#btn-mode').classList.toggle('accent', mode !== 'normal');
   }
   if (app.newStartAt && Date.parse(app.newStartAt) <= Date.now()) app.newStartAt = '';
-  $('#schedule-label').textContent = scheduleLabel(app.newStartAt);
-  $('#btn-schedule').classList.toggle('accent', Boolean(app.newStartAt));
+  renderOptionChips();
 }
 
-export function renderRecentDirs() {
-  const dirs = [...new Set(app.runs.map((r) => r.workdir))].filter((d) => d !== app.newDir).slice(0, 5);
-  $('#recent-dirs').innerHTML = dirs.length ? `<span>${esc(t('home.recentDirs'))}</span>${dirs.map((d) => `<button type="button" data-dir="${esc(d)}" title="${esc(d)}">${esc(d.split('/').slice(-2).join('/'))}</button>`).join('')}` : '';
+const teamLabel = (mode) => TEAM_MODES().find(([v]) => v === mode)?.[1] || mode;
+const modeLabel = (mode) => TASK_MODES().find(([v]) => v === mode)?.[1] || mode;
+
+/** Chips for the options that differ from the defaults; a chip opens its menu, its × resets it. */
+function renderOptionChips() {
+  const st = app.newSettings;
+  const team = st?.team?.mode || 'off';
+  const mode = st?.agents?.mode || 'normal';
+  const chips = [];
+  if (team !== 'off') chips.push(['team', 'team', t('home.chipTeam', { mode: teamLabel(team) })]);
+  if (mode !== 'normal') chips.push(['mode', 'list', modeLabel(mode)]);
+  if (app.newStartAt) chips.push(['schedule', 'clock', scheduleLabel(app.newStartAt)]);
+  const reset = esc(t('home.reset'));
+  const html = chips.map(([id, icon, label]) => `<span class="opt-chip" data-opt="${id}" role="button" tabindex="0">${ICON[icon]}<span class="lbl">${esc(label)}</span><button class="x" type="button" data-reset="${id}" title="${reset}" aria-label="${reset}">${ICON.x}</button></span>`).join('');
+  // the environment refresh calls this every 30 s: rebuild only on a change, so an open chip menu keeps its anchor
+  if (html !== chipsHtml) $('#opt-chips').innerHTML = chipsHtml = html;
 }
 
-export function renderActiveOnHome() {
-  const active = app.runs.filter((r) => ACTIVE.has(r.status));
-  $('#home-active').classList.toggle('hidden', !active.length);
-  $('#active-list').innerHTML = active.map((r) => {
-    const what = r.status === 'running' ? tPhase(r.phase) : r.scheduledAt && r.status === 'waiting' ? t('home.waitingSchedule') : tStatus(r.status);
-    return `<div class="active-card" data-id="${esc(r.id)}">
-      <span class="sglyph ${esc(r.status)}"><span class="pip"></span></span>
-      <div class="t"><div class="t1">${r.team !== 'off' ? `<span class="mini-badge">${ICON.team}</span>` : ''}${esc(firstLine(r.goal, 80))}</div><div class="t2">${esc(what)} · ${esc(t('home.roundOf', { n: r.round, max: r.maxRounds ?? '?' }))} · <span title="${esc(r.workdir)}">${esc(tailPath(r.workdir))}</span> · ${esc(fmtRelative(r.updatedAt))}</div></div>
-      <div class="bar" title="${esc(t('home.progress', { n: r.progress ?? 0 }))}"><i style="width:${Math.max(0, Math.min(100, r.progress || 0))}%"></i></div>
-    </div>`;
-  }).join('');
-}
-
-$('#active-list').addEventListener('click', (e) => {
-  const c = e.target.closest('[data-id]');
-  if (c) location.hash = `#run/${c.dataset.id}`;
+$('#opt-chips').addEventListener('click', (e) => {
+  const reset = e.target.closest('[data-reset]');
+  if (reset) {
+    const id = reset.dataset.reset;
+    if (id === 'team') setNewTeam('off');
+    else if (id === 'mode') setNewMode('normal');
+    else {
+      app.newStartAt = '';
+      updateHomeChips();
+    }
+    return;
+  }
+  const chip = e.target.closest('[data-opt]');
+  if (chip) openOption(chip.dataset.opt, chip);
+});
+$('#opt-chips').addEventListener('keydown', (e) => {
+  const chip = e.target.closest('[data-opt]');
+  if (chip && e.target === chip && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    openOption(chip.dataset.opt, chip);
+  }
 });
 
-$('#recent-dirs').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-dir]');
-  if (!b) return;
-  app.newDir = b.dataset.dir;
-  updateHomeChips();
-  renderRecentDirs();
-});
+function syncComposer() {
+  const has = Boolean(goalEl.value.trim());
+  $('#home-composer').classList.toggle('has-text', has);
+  $('#btn-start').disabled = !has || starting;
+}
 
 // ---------- working directory ----------
+function setDir(dir) {
+  app.newDir = dir;
+  updateHomeChips();
+  actions.refreshCommands?.();
+}
+
 function pickFolderModal() {
   let current = app.newDir || app.env?.home || '';
   const body = openModal(t('home.pickDir'), '<div id="dir-picker"></div>', {
@@ -97,9 +139,7 @@ function pickFolderModal() {
     foot: `<span class="note"></span><button class="btn" type="button" data-close>${esc(t('common.cancel'))}</button><button class="btn primary" type="button" id="dir-choose">${esc(t('home.chooseThisDir'))}</button>`,
   });
   $('#dir-choose').onclick = () => {
-    app.newDir = current;
-    updateHomeChips();
-    renderRecentDirs();
+    setDir(current);
     closeModal();
   };
   const render = async (p) => {
@@ -122,16 +162,35 @@ function pickFolderModal() {
 export async function pickFolder() {
   if (native) {
     const p = await nativeCall('pickFolder', { start: app.newDir || '' });
-    if (p) {
-      app.newDir = p;
-      updateHomeChips();
-      renderRecentDirs();
-    }
+    if (p) setDir(p);
   } else {
     pickFolderModal();
   }
 }
-$('#btn-pick').onclick = pickFolder;
+
+/** Recent folders first; "Choose another folder…" opens the picker (straight away when there are none). */
+function openDirMenu(anchor) {
+  const dirs = [...new Set(app.runs.map((r) => r.workdir))].filter((d) => d && d !== app.newDir).slice(0, 6);
+  if (!dirs.length) {
+    pickFolder();
+    return;
+  }
+  const pop = openPopover(anchor, `<div class="menu-label">${esc(t('home.recentDirs'))}</div>
+    ${dirs.map((d, i) => `<button class="menu-item" type="button" data-i="${i}" title="${esc(d)}">${ICON.folder}<span>${esc(dirName(d))}</span><span class="desc">${esc(parentShort(d))}</span></button>`).join('')}
+    <div class="menu-sep"></div>
+    <button class="menu-item" type="button" data-browse="1">${ICON.finder}<span>${esc(t('home.otherDir'))}</span></button>`, { align: 'left', className: 'dir-pop' });
+  pop.onclick = (e) => {
+    const b = e.target.closest('[data-i]');
+    if (b) {
+      closePopover();
+      setDir(dirs[Number(b.dataset.i)]);
+    } else if (e.target.closest('[data-browse]')) {
+      closePopover();
+      pickFolder();
+    }
+  };
+}
+$('#btn-pick').onclick = (e) => openDirMenu(e.currentTarget);
 
 // ---------- settings for this task ----------
 export function openParams() {
@@ -179,35 +238,59 @@ export function setNewMode(mode) {
   updateHomeChips();
 }
 
-$('#btn-team').onclick = (e) => {
+// ---------- the "+" menu and its option menus ----------
+function openMoreMenu(anchor) {
+  const st = ensureNewSettings();
+  const row = (id, icon, label, value = '') => `<button class="menu-item sub" type="button" data-opt="${id}">${ICON[icon]}<span>${esc(label)}</span>${value ? `<span class="desc">${esc(value)}</span>` : ''}<span class="chev">${ICON.chev}</span></button>`;
+  const pop = openPopover(anchor, `
+    ${row('templates', 'scroll', t('home.templates'))}
+    <div class="menu-sep"></div>
+    ${row('team', 'team', t('home.teamTitle'), teamLabel(st?.team?.mode || 'off'))}
+    ${row('mode', 'list', t('home.modeTitle'), modeLabel(st?.agents?.mode || 'normal'))}
+    ${row('schedule', 'clock', t('home.optStart'), app.newStartAt ? fmtClock(app.newStartAt) : t('home.now'))}`, { align: 'left', className: 'more-pop' });
+  pop.onclick = (e) => {
+    const b = e.target.closest('[data-opt]');
+    if (b) openOption(b.dataset.opt, anchor);
+  };
+}
+$('#btn-more').onclick = (e) => openMoreMenu(e.currentTarget);
+
+function openOption(id, anchor) {
+  if (id === 'templates') openTemplateMenu(anchor);
+  else if (id === 'team') openTeamMenu(anchor);
+  else if (id === 'mode') openModeMenu(anchor);
+  else if (id === 'schedule') openSchedule(anchor);
+}
+
+function openTeamMenu(anchor) {
   const cur = ensureNewSettings()?.team?.mode || 'off';
-  const pop = openPopover(e.currentTarget, `<div class="menu-label">${esc(t('home.teamTitle'))}</div>
-    ${TEAM_MODES().map(([v, label]) => menuItem({ act: v, label, checked: v === cur, attrs: '' })).join('')}
-    <div class="hint" style="padding:2px 11px 8px;margin:0;max-width:330px">${esc(t('home.teamHint'))}</div>`, { align: 'left' });
+  const pop = openPopover(anchor, `<div class="menu-label">${esc(t('home.teamTitle'))}</div>
+    ${TEAM_MODES().map(([v, label]) => menuItem({ act: v, label, checked: v === cur })).join('')}
+    <div class="hint pop-hint">${esc(t('home.teamHint'))}</div>`, { align: 'left' });
   pop.onclick = (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
     closePopover();
     setNewTeam(b.dataset.act);
   };
-};
+}
 
-$('#btn-mode').onclick = (e) => {
+function openModeMenu(anchor) {
   const cur = ensureNewSettings()?.agents?.mode || 'normal';
   const hints = { normal: t('mode.normalHint'), plan: t('mode.planHint'), vuln: t('mode.vulnHint') };
-  const pop = openPopover(e.currentTarget, `<div class="menu-label">${esc(t('home.modeTitle'))}</div>
-    ${TASK_MODES().map(([v, label]) => menuItem({ act: v, label, desc: '', checked: v === cur })).join('')}
-    <div class="hint" style="padding:2px 11px 8px;margin:0;max-width:330px">${esc(hints[cur])}</div>`, { align: 'left' });
+  const pop = openPopover(anchor, `<div class="menu-label">${esc(t('home.modeTitle'))}</div>
+    ${TASK_MODES().map(([v, label]) => menuItem({ act: v, label, checked: v === cur })).join('')}
+    <div class="hint pop-hint">${esc(hints[cur])}</div>`, { align: 'left' });
   pop.onclick = (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
     closePopover();
     setNewMode(b.dataset.act);
   };
-};
+}
 
-$('#btn-schedule').onclick = (e) => {
-  openSchedulePopover(e.currentTarget, {
+function openSchedule(anchor) {
+  openSchedulePopover(anchor, {
     current: app.newStartAt,
     modelId: (app.newSettings || app.env?.config)?.workbuddy?.model || 'auto',
     onPick: (iso) => {
@@ -215,7 +298,7 @@ $('#btn-schedule').onclick = (e) => {
       updateHomeChips();
     },
   });
-};
+}
 
 // ---------- templates: placeholders are 【…】 or [[…]]; Tab jumps between them ----------
 const PLACEHOLDER_RE = /【[^】\n]*】|\[\[[^\]\n]*\]\]/g;
@@ -243,23 +326,75 @@ export async function loadTemplates() {
   try {
     app.templates = await api('/api/templates');
   } catch {
-    return;
+    // keep the last list
   }
-  renderTemplates();
 }
 
-export function renderTemplates() {
-  const { builtin, custom } = app.templates;
-  const goal = goalEl.value.trim();
-  const card = (tpl, isCustom) => `<button class="tpl-card${isCustom ? ' custom' : ''}${goal && goal === tpl.body.trim() ? ' applied' : ''}" type="button" data-tpl="${esc(tpl.id)}" title="${esc(isCustom ? t('home.myTemplate') : tpl.hint)}">
-      <span class="ic">${TEMPLATE_ICON[isCustom ? 'custom' : tpl.id] || TEMPLATE_ICON.custom}</span>
-      <span class="nm">${esc(tpl.name)}</span>
-      <span class="ht">${esc(isCustom ? firstLine(tpl.body, 40) : tpl.hint)}</span>
-      ${isCustom ? `<span class="del" data-del="${esc(tpl.id)}" title="${esc(t('home.deleteTemplate'))}" role="button" aria-label="${esc(t('common.delete'))}">×</span>` : ''}
-    </button>`;
-  const saveCard = `<button class="tpl-card custom save" type="button" data-save-tpl="1" title="${esc(t('home.saveTemplateTitle'))}">
-      <span class="ic">${TEMPLATE_ICON.custom}</span><span class="nm">${esc(t('home.saveTemplate'))}</span><span class="ht">${esc(t('home.saveTemplateHint'))}</span></button>`;
-  $('#tpl-list').innerHTML = builtin.map((tpl) => card(tpl, false)).join('') + custom.map((tpl) => card(tpl, true)).join('') + saveCard;
+/** The template list (from the "+" menu or /template): built-in ones, then the user's, then "Save as template". */
+export function openTemplateMenu(anchor = $('#btn-more')) {
+  const { builtin = [], custom = [] } = app.templates || {};
+  const item = (tpl, isCustom) => {
+    const icon = TEMPLATE_ICON[isCustom ? 'custom' : tpl.id] || TEMPLATE_ICON.custom;
+    const hint = isCustom ? firstLine(tpl.body, 80) : tpl.hint;
+    const del = isCustom ? `<button class="x" type="button" data-del="${esc(tpl.id)}" title="${esc(t('home.deleteTemplate'))}" aria-label="${esc(t('common.delete'))}">${ICON.x}</button>` : '';
+    return `<div class="menu-item tpl-item" role="button" tabindex="0" data-tpl="${esc(tpl.id)}" title="${esc(hint)}">${icon}<span class="nm">${esc(tpl.name)}</span><span class="ht">${esc(hint)}</span>${del}</div>`;
+  };
+  const pop = openPopover(anchor, `<div class="menu-label">${esc(t('home.templates'))}</div>
+    ${builtin.map((x) => item(x, false)).join('')}
+    ${custom.length ? `<div class="menu-sep"></div>${custom.map((x) => item(x, true)).join('')}` : ''}
+    <div class="menu-sep"></div>
+    <button class="menu-item" type="button" data-save-tpl="1" title="${esc(t('home.saveTemplateTitle'))}">${ICON.plus}<span>${esc(t('home.saveTemplate'))}</span></button>
+    <div class="tpl-save hidden"><input id="tpl-name" type="text" maxlength="30" placeholder="${esc(t('home.templateNamePlaceholder'))}" autocomplete="off"><button class="btn sm primary" type="button" id="tpl-save-ok">${esc(t('common.save'))}</button></div>`, { align: 'left', className: 'tpl-pop' });
+  const choose = (node) => {
+    const tpl = findTemplate(node.dataset.tpl);
+    closePopover();
+    if (tpl) applyTemplate(tpl);
+  };
+  pop.onclick = async (e) => {
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const tpl = custom.find((x) => x.id === del.dataset.del);
+      if (!tpl || !(await confirmDialog({ title: t('home.deleteTemplateQ', { name: tpl.name }), ok: t('common.delete'), danger: true }))) return;
+      try {
+        app.templates = await api(`/api/templates/${tpl.id}`, { method: 'DELETE' });
+        if (anchor.isConnected) openTemplateMenu(anchor);
+      } catch (err) {
+        toast(err.message);
+      }
+      return;
+    }
+    if (e.target.closest('[data-save-tpl]')) {
+      if (!goalEl.value.trim()) {
+        toast(t('home.saveTemplateNeedGoal'));
+        return;
+      }
+      $('[data-save-tpl]', pop).classList.add('hidden');
+      $('.tpl-save', pop).classList.remove('hidden');
+      $('#tpl-name', pop).focus();
+      return;
+    }
+    if (e.target.closest('#tpl-save-ok')) {
+      saveTemplate($('#tpl-name', pop).value);
+      return;
+    }
+    const node = e.target.closest('[data-tpl]');
+    if (node) choose(node);
+  };
+  pop.onkeydown = (e) => {
+    if (e.isComposing) return;
+    if (e.target.id === 'tpl-name' && e.key === 'Enter') saveTemplate(e.target.value);
+    else if (e.key === 'Enter' && e.target.matches('[data-tpl]')) choose(e.target);
+  };
+}
+
+async function saveTemplate(name) {
+  try {
+    app.templates = await api('/api/templates', { method: 'POST', body: { name, body: goalEl.value } });
+    closePopover();
+    toast(t('home.savedTemplate'));
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 export function applyTemplate(tpl) {
@@ -275,10 +410,11 @@ export function applyTemplate(tpl) {
       updateHomeChips();
     }
     autosize(goalEl, maxGoalHeight());
-    renderTemplates();
+    syncComposer();
     goalEl.scrollTop = 0;
     goalEl.setSelectionRange(0, 0);
-    if (!jumpPlaceholder(goalEl, 1)) goalEl.focus();
+    if (jumpPlaceholder(goalEl, 1)) toast(t('home.tplHint'), { ms: 4200 });
+    else goalEl.focus();
   };
   if (cur && cur !== tplApplied && cur !== tpl.body.trim()) {
     confirmDialog({ title: t('home.replaceTitle'), text: t('home.replaceText'), ok: t('home.replace') }).then((yes) => yes && go());
@@ -300,60 +436,12 @@ export function findTemplate(id) {
   return [...app.templates.builtin, ...app.templates.custom].find((x) => x.id === id);
 }
 
-$('#tpl-list').addEventListener('click', async (e) => {
-  const del = e.target.closest('[data-del]');
-  if (del) {
-    e.stopPropagation();
-    const tpl = app.templates.custom.find((x) => x.id === del.dataset.del);
-    if (!tpl || !(await confirmDialog({ title: t('home.deleteTemplateQ', { name: tpl.name }), ok: t('common.delete'), danger: true }))) return;
-    try {
-      app.templates = await api(`/api/templates/${tpl.id}`, { method: 'DELETE' });
-      renderTemplates();
-    } catch (err) {
-      toast(err.message);
-    }
-    return;
-  }
-  if (e.target.closest('[data-save-tpl]')) {
-    openSaveTemplate();
-    return;
-  }
-  const b = e.target.closest('[data-tpl]');
-  if (!b) return;
-  const tpl = findTemplate(b.dataset.tpl);
-  if (tpl) applyTemplate(tpl);
-});
-
-function openSaveTemplate() {
-  if (!goalEl.value.trim()) {
-    toast(t('home.saveTemplateNeedGoal'));
-    return;
-  }
-  $('#tpl-save').classList.remove('hidden');
-  $('#tpl-name').focus();
-}
-$('#tpl-save-cancel').onclick = () => $('#tpl-save').classList.add('hidden');
-$('#tpl-save-ok').onclick = async () => {
-  try {
-    app.templates = await api('/api/templates', { method: 'POST', body: { name: $('#tpl-name').value, body: goalEl.value } });
-    $('#tpl-save').classList.add('hidden');
-    $('#tpl-name').value = '';
-    renderTemplates();
-    toast(t('home.savedTemplate'));
-  } catch (err) {
-    toast(err.message);
-  }
-};
-$('#tpl-name').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.isComposing) $('#tpl-save-ok').click();
-  if (e.key === 'Escape') $('#tpl-save').classList.add('hidden');
-});
-
 /** Puts text into the goal box (custom commands, generated prompts, skills, TODOs). */
 export function insertIntoGoal(text, { replace = false } = {}) {
   if (replace || !goalEl.value.trim()) goalEl.value = text;
   else goalEl.value = `${goalEl.value.replace(/\s+$/, '')}\n\n${text}`;
   autosize(goalEl, maxGoalHeight());
+  syncComposer();
   goalEl.focus();
   goalEl.setSelectionRange(goalEl.value.length, goalEl.value.length);
   if (!jumpPlaceholder(goalEl, 1)) goalEl.scrollTop = goalEl.scrollHeight;
@@ -365,6 +453,7 @@ export function goalText() {
 
 // ---------- start ----------
 export async function startTask() {
+  if (starting) return;
   const err = $('#new-error');
   err.textContent = '';
   let goal = goalEl.value.trim();
@@ -385,8 +474,8 @@ export async function startTask() {
     err.textContent = t('home.needDir');
     return;
   }
-  const btn = $('#btn-start');
-  btn.disabled = true;
+  starting = true;
+  syncComposer();
   try {
     if (app.env && !app.env.workbuddy.loggedIn) throw new Error(t('home.needWbLogin'));
     if (app.env && !app.env.codex.loggedIn) throw new Error(t('home.needGptLogin'));
@@ -403,13 +492,13 @@ export async function startTask() {
     placeholderAck = '';
     app.newStartAt = '';
     updateHomeChips();
-    renderTemplates();
     await actions.refreshRuns?.();
     location.hash = `#run/${run.id}`;
   } catch (e) {
     err.textContent = e.message;
   } finally {
-    btn.disabled = false;
+    starting = false;
+    syncComposer();
   }
 }
 $('#btn-start').onclick = startTask;
@@ -432,10 +521,14 @@ export function initHome() {
   });
   goalEl.addEventListener('input', () => {
     autosize(goalEl, maxGoalHeight());
-    if ($('#tpl-list .applied') || goalEl.value.trim() === tplApplied) renderTemplates();
+    syncComposer();
   });
-  goalEl.addEventListener('history', () => autosize(goalEl, maxGoalHeight()));
+  goalEl.addEventListener('history', () => {
+    autosize(goalEl, maxGoalHeight());
+    syncComposer();
+  });
   renderHero();
+  syncComposer();
 }
 
 export function focusGoal() {

@@ -125,6 +125,7 @@ export const ICON = {
   more: svg('<circle cx="5.5" cy="12" r="1.1" fill="currentColor"/><circle cx="12" cy="12" r="1.1" fill="currentColor"/><circle cx="18.5" cy="12" r="1.1" fill="currentColor"/>'),
   close: svg('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'),
   chev: svg('<path d="M9.5 6.5 15 12l-5.5 5.5"/>', { sw: 1.8 }),
+  chevDown: svg('<path d="M7 10l5 5 5-5"/>', { sw: 1.8 }),
   check: svg('<path d="M5.5 12.5 10 17l8.5-9.5"/>', { sw: 1.8 }),
   x: svg('<path d="M7 7l10 10M17 7 7 17"/>', { sw: 1.8 }),
   warn: svg('<path d="M12 4.5 21 19.5H3z"/><path d="M12 10v4.5"/><circle cx="12" cy="17" r=".5" fill="currentColor"/>'),

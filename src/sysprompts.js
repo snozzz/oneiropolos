@@ -6,7 +6,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DATA_DIR } from './paths.js';
-import { applyPurge } from './purge.js';
 import { oneLine, truncate } from './util.js';
 
 export const ROLES = ['lead', 'executor', 'teammate', 'reviewer', 'advisor'];
@@ -507,11 +506,5 @@ export function buildSystemPrompt(role, ctx) {
   } else if (worker) {
     text += standingRules(settings.prompts?.workbuddy, 'Standing rules from the user (follow them in every task)');
   }
-  // The local ruleset (settings.purge) is the last block, so it wins over everything above it.
-  const purged = applyPurge(text, { settings, role, workdir: ctx.workdir });
-  if (purged.text !== text) {
-    text = purged.text;
-    source = `${source}+purge`;
-  }
-  return { text, source, roleFile: roleFile?.file || null, purge: purged.purge };
+  return { text, source, roleFile: roleFile?.file || null };
 }

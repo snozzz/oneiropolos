@@ -2,7 +2,7 @@
 import { $, $$, ACTIVE, actions, api, app, applyTheme, esc, firstLine, fmtRelative, loadUi, native, oneLine, tPhase, tStatus } from './core.js';
 import { ICON, BRAND, statusGlyph } from './brand.js';
 import { lang, locale, t, translateDom } from './i18n.js';
-import { applyTemplate, fillTemplate, findTemplate, focusGoal, goalText, initHome, insertIntoGoal, loadTemplates, openParams, pickFolder, pickRunSettings, renderActiveOnHome, renderHero, renderRecentDirs, setNewMode, setNewTeam, updateHomeChips } from './home.js';
+import { applyTemplate, fillTemplate, findTemplate, focusGoal, goalText, initHome, insertIntoGoal, loadTemplates, openParams, openTemplateMenu, pickFolder, pickRunSettings, renderHero, renderLede, setNewMode, setNewTeam, updateHomeChips } from './home.js';
 import { closeModal, closePalette, closePopover, modalOpen, openPalette, paletteOpen, popoverOpen } from './overlay.js';
 import { openGptPanel, openHelp, openSettings, openWbPanel, quotaText, registerPanels } from './panels.js';
 import { applyDensity, closeRun, initThread, openAside, openRun, renderHeader, runAction, setDensity } from './thread.js';
@@ -111,8 +111,7 @@ async function refreshRuns() {
   $('#list-active').innerHTML = active.map(runItem).join('');
   $('#label-recent').classList.toggle('hidden', !recent.length && Boolean(active.length));
   $('#list-recent').innerHTML = recent.length ? recent.map(runItem).join('') : active.length ? '' : `<li class="run-empty">${esc(t('side.empty1'))}<br>${esc(t('side.empty2'))}</li>`;
-  renderRecentDirs();
-  renderActiveOnHome();
+  renderLede();
 }
 
 $('#side-scroll').addEventListener('click', (e) => {
@@ -137,20 +136,6 @@ async function setLanguage(v) {
   location.reload();
 }
 
-/** Ruleset overlay on/off (the badge in the task header reflects what was actually injected). */
-async function setPurge(arg) {
-  const cur = Boolean(app.env?.config?.purge?.enabled);
-  const want = arg === 'on' ? true : arg === 'off' ? false : !cur;
-  try {
-    await api('/api/config', { method: 'PUT', body: { purge: { enabled: want } } });
-    await refreshEnv();
-    if (app.state) renderHeader();
-    const pg = app.env?.purge;
-    toast(want ? t(`purge.toastOn`, { label: pg?.label || 'PURGE', why: pg?.active ? '' : ` · ${t(`purge.why.${pg?.reason || 'off'}`)}` }) : t('purge.toastOff'));
-  } catch (err) {
-    toast(err.message);
-  }
-}
 
 const homeDir = () => app.newDir;
 
@@ -214,6 +199,7 @@ actions.homeCommands = () => {
   const list = [
     { name: 'dir', label: t('home.pickDir'), keys: 'ml mulu folder', run: pickFolder },
     { name: 'params', label: t('home.paramsTitle'), keys: 'cs canshu model', run: openParams },
+    { name: 'template', label: t('home.templates'), desc: t('cmd.templateDesc'), keys: 'mb muban tpl templates', run: () => openTemplateMenu() },
     { name: 'team', label: t('cmd.team'), desc: t('cmd.teamHomeDesc'), arg: 'off|auto|always', keys: 'td tuandui', run: (a) => setNewTeam(['off', 'auto', 'always'].includes(a) ? a : (app.newSettings?.team?.mode || 'off') === 'off' ? 'auto' : 'off') },
     { name: 'mode', label: t('cmd.mode'), desc: t('cmd.modeDesc'), arg: 'normal|plan|vuln', keys: 'ms moshi', run: (a) => setNewMode(['normal', 'plan', 'vuln'].includes(a) ? a : 'plan') },
     { name: 'init', label: t('cmd.init'), desc: t('cmd.initDesc'), keys: 'csh chushihua agents.md', run: () => { const tpl = findTemplate('init'); if (tpl) applyTemplate(tpl); } },
@@ -228,7 +214,6 @@ actions.homeCommands = () => {
     { name: 'notebook', label: t('run.notebook'), desc: t('cmd.notebookDesc'), keys: 'bjb biji', run: () => openNotebook(homeDir()) },
     { name: 'usage', label: t('usage.title'), keys: 'yl yongliang tokens', run: () => openUsage() },
     { name: 'mcp', label: 'MCP', keys: 'mcp', run: () => openSettings('mcp') },
-    { name: 'purge', label: t('cmd.purge'), desc: t('cmd.purgeDesc'), arg: 'on|off', keys: 'purge guizeji ruleset pojia', run: (a) => setPurge(a) },
     { name: 'hooks', label: t('palette.hooks'), keys: 'gz gouzi', run: () => openSettings('hooks') },
     { name: 'settings', label: t('settings.title'), keys: 'sz shezhi', run: () => openSettings() },
     { name: 'help', label: t('help.title'), keys: 'bz bangzhu', run: openHelp },
@@ -328,7 +313,6 @@ function route() {
   showView('new');
   renderHero();
   updateHomeChips();
-  renderRecentDirs();
   refreshCommands();
   focusGoal();
 }

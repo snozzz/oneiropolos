@@ -5,8 +5,11 @@ import { readJson, writeJsonAtomic } from './util.js';
 export const DEFAULTS = {
   codex: {
     path: '', // empty = find automatically
+    home: '', // empty = $CODEX_HOME or ~/.codex; a path here runs codex against its own home (its own hooks/config)
     model: '', // empty = the highest-priority model the account can use
     effort: 'high',
+    // 0 = codex's own window (272K for the current catalog); a number here is passed as -c model_context_window=N
+    contextWindow: 0,
     // scratch = GPT works in its own writable scratch dir (can run tests that write temp files), the project is
     // read-only for it; read-only = fully read-only
     sandbox: 'scratch',
@@ -70,9 +73,6 @@ export const DEFAULTS = {
     custom: [], // [{ id, pattern, description, enabled }]
   },
   hooks: { enabled: true },
-  // A local ruleset composed into the GPT system prompt (lead/reviewer). Empty file = no-op; the app ships no
-  // content of its own. mode: overlay = appended above the built-in prompt, replace = built-in prompt dropped.
-  purge: { enabled: false, file: '', mode: 'overlay', label: 'PURGE', roles: ['lead', 'reviewer'] },
   skills: { enabled: true, disabled: [], extraDirs: [] }, // extraDirs: more global skill folders, e.g. ~/.claude/skills
   mcp: { enabled: true },
   notebook: { enabled: true },
@@ -92,7 +92,7 @@ export const DEFAULTS = {
 };
 
 // Settings copied into each task (everything that changes how a task runs); UI preferences and profiles stay global.
-export const TASK_KEYS = ['codex', 'workbuddy', 'loop', 'agents', 'team', 'prompts', 'subagents', 'safety', 'hooks', 'skills', 'mcp', 'notebook', 'system', 'purge'];
+export const TASK_KEYS = ['codex', 'workbuddy', 'loop', 'agents', 'team', 'prompts', 'subagents', 'safety', 'hooks', 'skills', 'mcp', 'notebook', 'system'];
 
 function isPlainObject(v) {
   return v && typeof v === 'object' && !Array.isArray(v);

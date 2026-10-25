@@ -841,7 +841,7 @@ export function openHelp() {
     ['/team off|auto|always', 'help.c.team'], ['/yolo', 'help.c.yolo'], ['/compact', 'help.c.compact'], ['/review', 'help.c.review'],
     ['/skills /agents /todo', 'help.c.pickers'], ['/new-prompt …', 'help.c.newPrompt'], ['/loop 30m …', 'help.c.loop'], ['/notebook', 'help.c.notebook'],
     ['/rollback /diff', 'help.c.rollback'], ['/export /copy', 'help.c.export'], ['/rounds /budget /check', 'help.c.limits'], ['/usage /tool-display', 'help.c.usage'],
-    ['/init /mode', 'help.c.init'], ['/gitline', 'help.c.gitline'], ['/deepresearch …', 'help.c.deepresearch'], ['/<custom>', 'help.c.custom'],
+    ['/template /init /mode', 'help.c.init'], ['/gitline', 'help.c.gitline'], ['/deepresearch …', 'help.c.deepresearch'], ['/<custom>', 'help.c.custom'],
   ];
   openModal(t('help.title'), `
     <div class="loop-diagram">

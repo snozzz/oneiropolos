@@ -43,39 +43,22 @@
             <div class="orn" id="hero-orn"></div>
             <h1 class="quote" id="hero-quote"></h1>
             <div class="quote-src" id="hero-src"></div>
-            <p class="lede" id="hero-lede"></p>
+            <p class="lede hidden" id="hero-lede"></p>
           </div>
           <div class="composer big" id="home-composer">
-            <textarea id="f-goal" rows="4" spellcheck="false" data-i18n-placeholder="home.goalPlaceholder"></textarea>
+            <textarea id="f-goal" rows="3" spellcheck="false" data-i18n-placeholder="home.goalPlaceholder"></textarea>
+            <div class="opt-chips" id="opt-chips"></div>
             <div class="composer-tools">
-              <button class="tool-chip" id="btn-pick" type="button"><span data-icon="folder"></span><span id="dir-label" data-i18n="home.pickDir"></span></button>
-              <button class="tool-chip" id="btn-params" type="button" data-i18n-title="home.paramsTitle"><span data-icon="sliders"></span><span id="params-label" data-i18n="home.paramsTitle"></span></button>
-              <button class="tool-chip" id="btn-team" type="button" data-i18n-title="home.teamTitle"><span data-icon="team"></span><span id="team-label" data-i18n="home.teamOff"></span></button>
-              <button class="tool-chip" id="btn-mode" type="button" data-i18n-title="home.modeTitle"><span data-icon="list"></span><span id="mode-label" data-i18n="mode.normal"></span></button>
-              <button class="tool-chip" id="btn-schedule" type="button" data-i18n-title="home.scheduleTitle"><span data-icon="clock"></span><span id="schedule-label" data-i18n="schedule.now"></span></button>
-              <span class="spacer"></span>
-              <span class="kbd-hint" data-i18n="home.startHint"></span>
-              <button class="send-btn" id="btn-start" type="button" data-i18n-title="home.start" data-i18n-aria="home.start"><span data-icon="send"></span></button>
+              <button class="tool-btn" id="btn-pick" type="button"><span data-icon="folder"></span><span class="lbl" id="dir-label" data-i18n="home.pickDir"></span></button>
+              <button class="tool-btn icon" id="btn-more" type="button" data-i18n-title="home.more" data-i18n-aria="home.more"><span data-icon="plus"></span></button>
+              <span class="tools-end">
+                <button class="tool-btn quiet" id="btn-params" type="button" data-i18n-title="home.paramsTitle"><span class="lbl" id="params-label" data-i18n="home.paramsTitle"></span><span data-icon="chevDown"></span></button>
+                <span class="kbd-hint" aria-hidden="true">⌘↩</span>
+                <button class="send-btn" id="btn-start" type="button" data-i18n-title="home.start" data-i18n-aria="home.start"><span data-icon="send"></span></button>
+              </span>
             </div>
           </div>
           <div class="home-error error" id="new-error"></div>
-          <div class="recent" id="recent-dirs"></div>
-
-          <div class="home-section hidden" id="home-active">
-            <div class="rule-label"><span class="gem">◆</span><span data-i18n="home.inProgress"></span><span class="gem">◆</span></div>
-            <div class="active-list" id="active-list"></div>
-          </div>
-
-          <div class="home-section">
-            <div class="rule-label"><span class="gem">◆</span><span data-i18n="home.templates"></span><span class="gem">◆</span></div>
-            <div class="tpl-grid" id="tpl-list"></div>
-            <div class="tpl-save hidden" id="tpl-save">
-              <input id="tpl-name" type="text" maxlength="30" data-i18n-placeholder="home.templateNamePlaceholder" autocomplete="off">
-              <button class="btn sm primary" id="tpl-save-ok" type="button" data-i18n="common.save"></button>
-              <button class="btn sm ghost" id="tpl-save-cancel" type="button" data-i18n="common.cancel"></button>
-            </div>
-            <div class="home-foot" data-i18n="home.templatesFoot"></div>
-          </div>
         </div>
       </section>
 
@@ -90,14 +73,11 @@
             <div class="chat-foot">
               <div class="approvals" id="approvals"></div>
               <div class="notice hidden" id="run-notice"></div>
-              <div class="composer" id="run-composer">
+              <div class="composer inline" id="run-composer">
                 <textarea id="msg-input" rows="1" data-i18n-placeholder="run.placeholder"></textarea>
-                <div class="composer-tools">
-                  <span class="composer-hint" id="composer-hint"></span>
-                  <span class="spacer"></span>
-                  <button class="send-btn" id="btn-send" type="button" data-i18n-title="run.send" data-i18n-aria="run.send" disabled><span data-icon="send"></span></button>
-                </div>
+                <button class="send-btn" id="btn-send" type="button" data-i18n-title="run.send" data-i18n-aria="run.send" disabled><span data-icon="send"></span></button>
               </div>
+              <div class="composer-caption" id="composer-hint"></div>
             </div>
           </div>
           <aside class="drawer hidden" id="aside-drawer">

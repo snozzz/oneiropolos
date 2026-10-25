@@ -79,11 +79,20 @@ export function openPopover(anchor, html, { align = 'right', className = '' } = 
   const r = anchor.getBoundingClientRect();
   pop.style.left = '';
   pop.style.right = '';
+  pop.style.maxHeight = '';
   if (align === 'left') pop.style.left = `${Math.max(8, Math.round(r.left))}px`;
   else pop.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+  // below the anchor when it fits, else on the roomier side, shortened to fit the window
   const h = pop.offsetHeight;
-  const below = window.innerHeight - r.bottom;
-  pop.style.top = below < h + 16 && r.top > h + 16 ? `${Math.round(r.top - h - 6)}px` : `${Math.round(r.bottom + 6)}px`;
+  const below = window.innerHeight - r.bottom - 14;
+  const above = r.top - 14;
+  if (h <= below || below >= above) {
+    if (h > below) pop.style.maxHeight = `${Math.max(120, Math.round(below))}px`;
+    pop.style.top = `${Math.round(r.bottom + 6)}px`;
+  } else {
+    if (h > above) pop.style.maxHeight = `${Math.round(above)}px`;
+    pop.style.top = `${Math.round(r.top - 6 - Math.min(h, above))}px`;
+  }
   popAnchor = anchor;
   return pop;
 }

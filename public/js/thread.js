@@ -111,34 +111,6 @@ const awaitingPlan = (s) => s?.status === 'waiting_user' && s.phase === 'approve
 
 const hbtn = (act, icon, text, kind = 'ghost', title = '') => `<button class="btn sm ${kind}" type="button" data-act="${act}"${title ? ` title="${esc(title)}"` : ''}>${icon ? ICON[icon] : ''}${text ? `<span>${esc(text)}</span>` : ''}</button>`;
 
-/** The purge badge: shows the state the last composed system prompt actually had. */
-const purgeSize = (n) => (n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
-/** A started task reports what it really injected; one that never ran falls back to the global slot. */
-function purgeOf(s = app.state) {
-  if (s?.purge) return s.purge;
-  if (!s || !s.round) return app.env?.purge;
-  return null;
-}
-function purgeChip(pg) {
-  if (!pg?.enabled) return '';
-  const why = pg.active ? t('purge.active') : t(`purge.why.${pg.reason || 'off'}`);
-  const title = `${pg.label} — ${why}\n${pg.file}${pg.active ? ` · ${purgeSize(pg.bytes)}` : ''}`;
-  return `<button class="chip-in purge${pg.active ? ' on' : ''}" type="button" data-act="purge" title="${esc(title)}">${ICON.shield}${esc(pg.label)}</button>`;
-}
-
-/** What the badge opens: the slot, the file it read, and the one command that changes it. */
-function purgePopoverHtml() {
-  const pg = purgeOf();
-  if (!pg?.enabled) return `<div class="plan-pop"><h4>${esc(pg?.label || 'PURGE')}</h4><p class="muted">${esc(t('purge.why.off'))}</p></div>`;
-  const state = pg.active ? t('purge.active') : t(`purge.why.${pg.reason || 'off'}`);
-  return `<div class="plan-pop">
-    <h4>${esc(pg.label)} · ${esc(state)}</h4>
-    <p class="purge-file">${esc(shortPath(pg.file))}</p>
-    <div class="stats">${esc(pg.mode)} · ${esc(pg.roles.join(', '))}${pg.active ? ` · ${esc(purgeSize(pg.bytes))}` : ''}${pg.truncated ? ` · ${esc(t('purge.truncated'))}` : ''}</div>
-    <p class="purge-hint">${esc(t('purge.hint'))}</p>
-    <code class="purge-cmd">wbloop config purge.enabled=${pg.enabled ? 'false' : 'true'}</code>
-  </div>`;
-}
 
 export function renderHeader() {
   const s = app.state;
@@ -181,7 +153,6 @@ export function renderHeader() {
         return d ? `<span>${esc(isScheduled(s) ? t('run.startsIn', { d }) : t('run.elapsed', { d }))}</span>` : '';
       })()}
       <span title="${esc(`GPT: ${set.codex?.model || '-'} · ${set.codex?.effort ? tEffort(set.codex.effort) : ''}`)}">GPT ${esc(set.codex?.model || t('form.default'))}</span>
-      ${purgeChip(purgeOf(s))}
       <span title="${esc(`WorkBuddy: ${wbModel(wbSet.model || 'auto').name} · ${wbEffortText(wbSet)}${wbSet.contextWindow ? ` · ${fmtCtx(wbSet.contextWindow)}` : ''}`)}">WorkBuddy ${esc(wbModel(wbSet.model || 'auto').name)}</span>
       ${team ? `<span class="chip-in">${ICON.team}${esc(team)}</span>` : ''}
       ${mode ? `<span class="chip-in">${esc(mode)}</span>` : ''}
@@ -289,9 +260,6 @@ export async function runAction(act, anchor) {
     } else if (act === 'aside') {
       toggleAside();
       renderHeader();
-      return;
-    } else if (act === 'purge') {
-      openPopover(anchor, purgePopoverHtml(), { className: 'plan-pop-wrap' });
       return;
     } else if (act === 'plan') {
       openPopover(anchor || $('[data-act="plan"]', $('#run-header')) || $('#run-header'), planPopoverHtml(), { className: 'plan-pop-wrap' });

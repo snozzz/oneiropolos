@@ -279,14 +279,12 @@ export class Orchestrator {
 
   /** Writes the system prompt of a role to a file in the run directory (Codex and WorkBuddy both read it from there). */
   writeSystemPrompt(role, ctx, name = role) {
-    const { text, source, purge } = buildSystemPrompt(role, ctx);
+    const { text, source } = buildSystemPrompt(role, ctx);
     const dir = path.join(this.dir, 'prompts');
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${name}.md`);
     fs.writeFileSync(file, text);
-    // what the header badge shows: the state after composition, not the config, so it cannot lie
-    if (purge && purge.reason !== 'role') this.state.purge = { ...purge, source, role };
-    return { file, source, purge };
+    return { file, source };
   }
 
   /** WorkBuddy hooks (--settings): the safety gate and the user's tool hooks, both handled by src/hook-gate.js. */
@@ -690,6 +688,9 @@ export class Orchestrator {
       this.save();
       this.emit('gpt.start', { label, round, resume: Boolean(s.gpt[threadKey]), prompt: truncate(currentPrompt, 24_000), system: sys.source });
       const { step, signal } = this.beginStep('gpt');
+      const gptExtraArgs = codexMcpArgs(this.cfg);
+      const ctxWindow = Math.round(Number(c.contextWindow) || 0);
+      if (ctxWindow > 0) gptExtraArgs.unshift('-c', `model_context_window=${ctxWindow}`);
       const r = await runCodexTurn({
         found: this.codex,
         threadId: s.gpt[threadKey],
@@ -700,8 +701,9 @@ export class Orchestrator {
         sandbox: this.sandbox.mode,
         schemaPath: this.schemaPath,
         instructionsFile: sys.file,
+        codexHome: c.home || '',
         webSearch: Boolean(c.webSearch),
-        extraArgs: codexMcpArgs(this.cfg),
+        extraArgs: gptExtraArgs,
         outFile: path.join(this.dir, `gpt-last-${threadKey}.txt`),
         rawFile: path.join(rawDir, `gpt-${label}.jsonl`),
         onEvent: (e) => this.emit(e.kind, { ...e, label, round }),
