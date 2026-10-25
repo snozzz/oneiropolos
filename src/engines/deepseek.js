@@ -6,7 +6,7 @@
 // Sign-in: the account sign-in lives in DSH's web host, so `login` starts `dsh --profile web` in that home for a moment,
 // asks it (account/startSignIn) for DeepSeek's authorization page, opens it, and waits until the grant is stored.
 // An API key from platform.deepseek.com works too; it is kept in ~/.wbloop/keys.json (0600).
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -92,9 +92,26 @@ export async function status(cfg) {
 
 // ---------- the web host, briefly, for account sign-in / sign-out ----------
 
+// a host left behind by a crashed app would keep its port and its sign-in attempt: remember it and clear it next time
+const hostPidFile = (cfg) => path.join(homeOf(cfg), '.wbloop-web-host.pid');
+
+function killStaleHost(cfg) {
+  const pid = Number(readJson(hostPidFile(cfg), null)?.pid);
+  if (!pid) return;
+  try {
+    // only if that pid is still a DSH web host (pids get reused)
+    const cmd = execFileSync('/bin/ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
+    if (/DeepSeek Harness/.test(cmd) && /--profile web/.test(cmd)) process.kill(-pid, 'SIGTERM');
+  } catch {
+    // already gone
+  }
+  fs.rmSync(hostPidFile(cfg), { force: true });
+}
+
 async function withWebHost(cfg, fn, { signal } = {}) {
   const found = find(cfg);
   if (!found) throw new Error(t('srv.deepseek.missing'));
+  killStaleHost(cfg);
   const child = spawn(found.exe, [found.entry, '--profile', 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'], {
     env: await env(cfg, found), cwd: homeOf(cfg), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
   });
@@ -106,12 +123,14 @@ async function withWebHost(cfg, fn, { signal } = {}) {
   child.stderr.on('data', (d) => {
     err = (err + d).slice(-8000);
   });
+  writeJsonAtomic(hostPidFile(cfg), { pid: child.pid, at: new Date().toISOString() });
   const stop = () => {
     try {
       process.kill(-child.pid, 'SIGTERM');
     } catch {
       // gone
     }
+    fs.rmSync(hostPidFile(cfg), { force: true });
   };
   try {
     const deadline = Date.now() + 60_000;
