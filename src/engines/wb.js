@@ -74,7 +74,14 @@ export async function lead(o) {
     timeoutMs: o.timeoutMs,
     rawFile: o.rawFile,
   });
-  if (r.sessionId) o.onEvent?.({ kind: 'gpt.thread', threadId: r.sessionId });
+  // A fresh WorkBuddy call is given a client generated id. The core can emit
+  // init before a quota/auth failure, even though no server conversation was
+  // created. Keep an established session for success, an explicit interrupt,
+  // or max-turns; an existing thread remains valid while its resume is being
+  // interrupted and can be rebuilt if the service reports it lost.
+  const established = r.sawInit && (r.ok || r.errorKind === 'aborted' || r.maxTurnsHit);
+  const threadId = o.threadId || (established ? r.sessionId : null);
+  if (threadId) o.onEvent?.({ kind: 'gpt.thread', threadId });
   const text = leadText(r);
-  return { ok: r.ok && Boolean(text), threadId: r.sessionId, text, usage: leadUsage(r.usage), error: leadError(r.ok && !text ? { ...r, ok: false, errors: [t('srv.engine.noReply')] } : r), durationMs: r.durationMs };
+  return { ok: r.ok && Boolean(text), threadId, text, usage: leadUsage(r.usage), error: leadError(r.ok && !text ? { ...r, ok: false, errors: [t('srv.engine.noReply')] } : r), durationMs: r.durationMs };
 }

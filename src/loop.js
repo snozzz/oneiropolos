@@ -47,6 +47,17 @@ const LIMIT_WAITS_MIN = [5, 10, 15, 30, 30, 60].map((m) => m * WAIT_SCALE);
 const TRANSIENT_WAITS_SEC = [15, 60, 180, 600].map((x) => x * WAIT_SCALE);
 const LOST_THREAD_RE = /no (rollout|session|conversation|thread)[^\n]{0,40}found|(thread|session|rollout)[^\n]{0,40}not found|failed to (resume|load)/i;
 const LOST_WB_SESSION_RE = /(session|conversation)[^\n]{0,40}(not found|does not exist|不存在)|No conversation found/i;
+const SETTINGS_RESUMABLE_PAUSES = {
+  'srv.pause.gptAuth': 'lead',
+  'srv.pause.gptConfig': 'lead',
+  'srv.pause.gptLimit': 'lead',
+  'srv.pause.gptFailing': 'lead',
+  'srv.pause.execAuth': 'executor',
+  'srv.pause.wbAuth': 'executor',
+  'srv.pause.wbLogin': 'executor',
+  'srv.pause.wbCredits': 'executor',
+  'srv.pause.wbLimit': 'executor',
+};
 const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep', 'TaskList', 'TaskGet', 'ToolSearch', 'NotebookRead', 'WebSearch', 'WebFetch']);
 const CHECK_SHELL = fs.existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/sh';
 const GATE = path.join(ROOT, 'src', 'hook-gate.js');
@@ -74,6 +85,7 @@ export class Orchestrator {
     this.stopRequested = false;
     this.pauseRequested = false;
     this.resumeRequested = false;
+    this.pauseRecovery = null;
     this.approveRequested = null;
     // the step in progress (one GPT turn, or one WorkBuddy round incl. continuations / all teammates):
     // "interrupt" ends only this step, not the task
@@ -126,11 +138,37 @@ export class Orchestrator {
     this.abort.abort();
   }
 
-  beginStep(kind) {
+  beginStep(kind, role = kind === 'work' ? 'executor' : 'lead') {
     const ctrl = new AbortController();
-    const step = { kind, ctrl, cut: false };
+    const signal = anySignal([this.abort.signal, ctrl.signal]);
+    const step = { kind, role, ctrl, signal, signalRevision: 0, cut: false, settingsRevision: 0 };
     this.step = step;
-    return { step, signal: anySignal([this.abort.signal, ctrl.signal]) };
+    return { step, signal };
+  }
+
+  /** The signal for a retry after a user setting changed. The task-wide stop signal stays permanent. */
+  renewStepSignal(step) {
+    if (this.step !== step) return this.abort.signal;
+    if (step.signal && step.signalRevision === step.settingsRevision && !step.signal.aborted) return step.signal;
+    step.ctrl = new AbortController();
+    step.signal = anySignal([this.abort.signal, step.ctrl.signal]);
+    step.signalRevision = step.settingsRevision;
+    return step.signal;
+  }
+
+  roleSettingsChanged(before, after, role) {
+    const a = roleSpec(before, role);
+    const b = roleSpec(after, role);
+    return this.roleSpecsChanged(a, b);
+  }
+
+  roleSpecsChanged(a, b) {
+    return a.engine !== b.engine || a.model !== b.model || a.effort !== b.effort;
+  }
+
+  pauseRecoveryFor(err) {
+    const role = SETTINGS_RESUMABLE_PAUSES[err?.key];
+    return role && !err?.byUser ? { role, spec: roleSpec(this.cfg, role) } : null;
   }
 
   endStep(step) {
@@ -198,13 +236,28 @@ export class Orchestrator {
         // interrupt: end the current step and let GPT handle the message right away (the task keeps running)
         if (c.cmd === 'cut' && this.step && !this.initialPoll) {
           this.step.cut = true;
+          this.step.signalRevision = -1;
           this.step.ctrl.abort();
         }
         break;
       }
       case 'settings':
         if (c.patch && typeof c.patch === 'object') {
-          this.state.settings = deepMerge(this.state.settings, c.patch);
+          const before = this.state.settings;
+          const after = deepMerge(before, c.patch);
+          this.state.settings = after;
+          // Only interrupt a live call when its effective engine/model/effort changed. Other settings
+          // are picked up by the next call without disturbing the current one.
+          if (this.step && this.roleSettingsChanged(before, after, this.step.role)) {
+            this.step.settingsRevision += 1;
+            this.step.ctrl.abort();
+          }
+          // A quota/auth/call-error pause can be recovered by changing that role's effective
+          // engine/model/effort. Manual pauses and user questions have no pauseRecovery marker.
+          if (this.state.status === 'paused' && this.pauseRecovery && !this.pauseRequested) {
+            const next = roleSpec(after, this.pauseRecovery.role);
+            if (this.roleSpecsChanged(this.pauseRecovery.spec, next)) this.resumeRequested = true;
+          }
           this.info('srv.ctl.settings', { patch: oneLine(JSON.stringify(c.patch), 300) });
         }
         break;
@@ -518,7 +571,8 @@ export class Orchestrator {
         else throw new Error(`unknown phase: ${phase}`);
       } catch (err) {
         if (err instanceof PauseSignal) {
-          await this.pauseUntilResumed({ key: err.key, params: err.params }, !err.byUser);
+          const recovery = this.pauseRequested ? null : this.pauseRecoveryFor(err);
+          await this.pauseUntilResumed({ key: err.key, params: err.params }, !err.byUser, recovery);
           continue;
         }
         throw err;
@@ -526,9 +580,10 @@ export class Orchestrator {
     }
   }
 
-  async pauseUntilResumed(message, isProblem) {
+  async pauseUntilResumed(message, isProblem, recovery = null) {
     this.pauseRequested = false;
     this.resumeRequested = false;
+    this.pauseRecovery = recovery;
     this.sleepGuard.release();
     this.setStatus('paused', message);
     if (isProblem) this.notify('notify.paused', t(message.key, message.params));
@@ -537,6 +592,7 @@ export class Orchestrator {
       await sleep(1000);
     }
     this.resumeRequested = false;
+    this.pauseRecovery = null;
     this.sleepGuard.hold();
     this.setStatus('running', null);
   }
@@ -711,10 +767,30 @@ export class Orchestrator {
     let limitTries = 0;
     let rebuilt = false;
     const triedModels = [];
-    const limitDeadline = Date.now() + (this.cfg.loop.waitOnLimitHours || 8) * 3600_000;
+    let limitDeadline = Date.now() + (this.cfg.loop.waitOnLimitHours || 8) * 3600_000;
     const rawDir = round ? this.ensureRoundDir(round) : this.dir;
-    for (;;) {
+    let handledSettingsRevision = 0;
+    const { step, signal: firstSignal } = this.beginStep('gpt', 'lead');
+    let signal = firstSignal;
+    try {
+      for (;;) {
       if (this.stopRequested) throw new StopSignal();
+      if (this.step?.settingsRevision > handledSettingsRevision) {
+        handledSettingsRevision = this.step.settingsRevision;
+        if (this.step.cut) {
+          // A user cut takes precedence over a simultaneous settings change; the audit will see the
+          // queued message and the next step will use the new settings.
+        } else {
+          interjections = interjections.concat(s.userMessages.slice(shown));
+          shown = s.userMessages.length;
+          if (interjections.length) appendix = P.interjectionNote(interjections);
+          limitTries = 0;
+          transientTries = 0;
+          limitDeadline = Date.now() + (this.cfg.loop.waitOnLimitHours || 8) * 3600_000;
+          signal = this.renewStepSignal(this.step);
+          this.info('srv.gpt.settingsChanged', undefined, { label, round });
+        }
+      }
       const c = this.cfg.codex;
       const spec = roleSpec(this.cfg, 'lead');
       const eng = engine(spec.engine);
@@ -738,7 +814,6 @@ export class Orchestrator {
       s.stats.gptTurns += 1;
       this.save();
       this.emit('gpt.start', { label, round, resume: Boolean(s.gpt[threadKey]), prompt: truncate(currentPrompt, 24_000), system: sys.source, engine: spec.engine });
-      const { step, signal } = this.beginStep('gpt');
       const r = await eng.lead({
         cfg: this.cfg,
         found,
@@ -762,7 +837,6 @@ export class Orchestrator {
         signal,
         timeoutMs: (c.turnTimeoutMin || 40) * 60_000,
       });
-      this.endStep(step);
       if (r.threadId) s.gpt[threadKey] = r.threadId;
       if (r.usage) {
         s.stats.gptIn += r.usage.input_tokens || 0;
@@ -780,7 +854,21 @@ export class Orchestrator {
           interjections = interjections.concat(s.userMessages.slice(shown));
           shown = s.userMessages.length;
           if (interjections.length) appendix = P.interjectionNote(interjections);
+          step.cut = false;
+          signal = this.renewStepSignal(step);
           this.info('srv.gpt.cutRetry', undefined, { label, round });
+          continue;
+        }
+        if (kind === 'aborted' && step.settingsRevision > handledSettingsRevision && !this.stopRequested) {
+          handledSettingsRevision = step.settingsRevision;
+          interjections = interjections.concat(s.userMessages.slice(shown));
+          shown = s.userMessages.length;
+          if (interjections.length) appendix = P.interjectionNote(interjections);
+          limitTries = 0;
+          transientTries = 0;
+          limitDeadline = Date.now() + (this.cfg.loop.waitOnLimitHours || 8) * 3600_000;
+          signal = this.renewStepSignal(step);
+          this.info('srv.gpt.settingsChanged', undefined, { label, round });
           continue;
         }
         if (kind === 'aborted' || this.stopRequested) throw new StopSignal();
@@ -813,13 +901,13 @@ export class Orchestrator {
           const waitMin = LIMIT_WAITS_MIN[Math.min(limitTries, LIMIT_WAITS_MIN.length - 1)];
           limitTries += 1;
           if (Date.now() + waitMin * 60_000 > limitDeadline) throw new PauseSignal('srv.pause.gptLimit', { msg: oneLine(msg, 200) });
-          await this.waitFor(waitMin * 60_000, 'srv.wait.gptLimit', { msg: oneLine(msg, 160), min: Math.round(waitMin) });
+          await this.waitFor(waitMin * 60_000, 'srv.wait.gptLimit', { msg: oneLine(msg, 160), min: Math.round(waitMin) }, { signal });
           continue;
         }
         if (transientTries >= TRANSIENT_WAITS_SEC.length) throw new PauseSignal('srv.pause.gptFailing', { msg: oneLine(msg, 300) });
         const waitSec = TRANSIENT_WAITS_SEC[transientTries];
         transientTries += 1;
-        await this.waitFor(waitSec * 1000, 'srv.wait.gptRetry', { msg: oneLine(msg, 160), sec: Math.round(waitSec) });
+        await this.waitFor(waitSec * 1000, 'srv.wait.gptRetry', { msg: oneLine(msg, 160), sec: Math.round(waitSec) }, { signal });
         continue;
       }
 
@@ -841,6 +929,9 @@ export class Orchestrator {
       this.emit('gpt.result', { label, round, output: norm.value, durationMs: r.durationMs, usage: r.usage, model: spec.model || spec.name, engine: spec.engine });
       this.save();
       return norm.value;
+      }
+    } finally {
+      this.endStep(step);
     }
   }
 
@@ -1175,11 +1266,28 @@ export class Orchestrator {
     let transientTries = 0;
     let limitTries = 0;
     let rotated = false;
-    const limitDeadline = Date.now() + (lc.waitOnLimitHours || 8) * 3600_000;
+    let handledSettingsRevision = 0;
+    let currentSignal = signal;
+    let limitDeadline = Date.now() + (lc.waitOnLimitHours || 8) * 3600_000;
     const tag = member ? { member } : {};
 
     for (;;) {
       if (this.stopRequested) throw new StopSignal();
+      if (step.settingsRevision > handledSettingsRevision && !step.cut) {
+        handledSettingsRevision = step.settingsRevision;
+        limitTries = 0;
+        transientTries = 0;
+        limitDeadline = Date.now() + (this.cfg.loop.waitOnLimitHours || 8) * 3600_000;
+        currentSignal = this.renewStepSignal(step);
+        const nextSpec = roleSpec(this.cfg, 'executor');
+        prompt = slot.engine && slot.engine !== nextSpec.engine
+          ? prompt
+          : resumePrompt(t('srv.reason.settingsChanged', undefined, 'en'));
+        this.info('srv.wb.settingsChanged', undefined, { round, ...tag });
+      } else if (step.settingsRevision > handledSettingsRevision) {
+        // A cut still ends this executor call; its queued message is handled by the audit.
+        handledSettingsRevision = step.settingsRevision;
+      }
       const spec = roleSpec(this.cfg, 'executor');
       const eng = engine(spec.engine);
       setRoleNames(roleNames(this.cfg));
@@ -1210,7 +1318,7 @@ export class Orchestrator {
           this.emit(e.kind, { ...e, round, ...tag });
         },
         onLive: live.update,
-        signal,
+        signal: currentSignal,
         rawFile: path.join(rdir, member ? `workbuddy.${member}.jsonl` : 'workbuddy.jsonl'),
       });
       live.close();
@@ -1269,6 +1377,19 @@ export class Orchestrator {
 
       const kind = r.errorKind;
       const errText = r.errors.join('\n');
+      if (step.settingsRevision > handledSettingsRevision && !step.cut && !this.stopRequested) {
+        handledSettingsRevision = step.settingsRevision;
+        limitTries = 0;
+        transientTries = 0;
+        limitDeadline = Date.now() + (this.cfg.loop.waitOnLimitHours || 8) * 3600_000;
+        currentSignal = this.renewStepSignal(step);
+        const nextSpec = roleSpec(this.cfg, 'executor');
+        prompt = slot.engine && slot.engine !== nextSpec.engine
+          ? prompt
+          : resumePrompt(t('srv.reason.settingsChanged', undefined, 'en'));
+        this.info('srv.wb.settingsChanged', undefined, { round, ...tag });
+        continue;
+      }
       if (kind === 'aborted' || this.stopRequested) throw new StopSignal();
       if (kind === 'auth') throw new PauseSignal(spec.engine === 'workbuddy' ? 'srv.pause.wbAuth' : 'srv.pause.execAuth', { name: spec.name, msg: oneLine(errText, 200) });
       if (kind === 'credits') throw new PauseSignal('srv.pause.wbCredits', { msg: oneLine(errText, 200), name: spec.name });
@@ -1282,7 +1403,7 @@ export class Orchestrator {
         const waitMin = LIMIT_WAITS_MIN[Math.min(limitTries, LIMIT_WAITS_MIN.length - 1)];
         limitTries += 1;
         if (Date.now() + waitMin * 60_000 > limitDeadline) throw new PauseSignal('srv.pause.wbLimit', { msg: oneLine(errText, 200) });
-        await this.waitFor(waitMin * 60_000, 'srv.wait.wbLimit', { msg: oneLine(errText, 160), min: Math.round(waitMin) }, { signal });
+        await this.waitFor(waitMin * 60_000, 'srv.wait.wbLimit', { msg: oneLine(errText, 160), min: Math.round(waitMin) }, { signal: currentSignal });
         prompt = resumePrompt(t('srv.reason.limit', undefined, 'en'));
         continue;
       }
@@ -1293,7 +1414,7 @@ export class Orchestrator {
       if (kind !== 'max_turns') {
         const waitSec = TRANSIENT_WAITS_SEC[Math.min(transientTries, TRANSIENT_WAITS_SEC.length - 1)];
         transientTries += 1;
-        await this.waitFor(waitSec * 1000, 'srv.wait.wbRetry', { msg: oneLine(errText, 160), sec: Math.round(waitSec) }, { signal });
+        await this.waitFor(waitSec * 1000, 'srv.wait.wbRetry', { msg: oneLine(errText, 160), sec: Math.round(waitSec) }, { signal: currentSignal });
       }
       agg.continuations += 1;
       prompt = resumePrompt(kind === 'max_turns' ? t('srv.reason.maxTurns', undefined, 'en') : oneLine(errText, 120));
@@ -1322,7 +1443,9 @@ export class Orchestrator {
         const st = rec.teamState[m.name] || (rec.teamState[m.name] = { sessionId: uuid(), sessionStarted: false, sessions: 1, handoff: null, done: false, inFlight: false });
         if (st.done || st.workspace) continue;
         this.info('srv.team.preparing', { name: m.name }, { round, member: m.name });
-        const ws = await prepareWorkspace({ runId: this.id, round, slug: m.name, workdir: s.workdir, signal });
+        // Workspace setup is task lifecycle work. A model change may rotate the active step while
+        // the copy is being prepared; only an actual task stop should abort this operation.
+        const ws = await prepareWorkspace({ runId: this.id, round, slug: m.name, workdir: s.workdir, signal: this.abort.signal });
         st.workspace = ws.dir;
         if (ws.warning) this.emit('info', { text: `${m.name}: ${oneLine(ws.warning, 300)}`, round, member: m.name });
         this.save();
