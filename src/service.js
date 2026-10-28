@@ -24,7 +24,7 @@ import { ACTIVE_STATUSES, appendControl, appendEvent, createRun, deleteRun, effe
 import { boardFile, postToBoard } from './team.js';
 import { listTemplates, saveTemplate } from './templates.js';
 import { usageReport } from './usage.js';
-import { baseChildEnv, execText, findExecutable, nowIso, oneLine, readJson, runProcess, truncate, writeJsonAtomic } from './util.js';
+import { SHELL, shellArgs, baseChildEnv, execText, findExecutable, nowIso, oneLine, readJson, runProcess, truncate, writeJsonAtomic } from './util.js';
 import { findWorkBuddy, listWbModels, refreshWbCloudConfig, wbAuthState, wbCloudConfig, wbLogin, wbLogout } from './workbuddy.js';
 
 // ---------- engines: sign-in state of every engine, cached briefly (each check starts the engine's CLI) ----------
@@ -152,7 +152,7 @@ export function resolveWorkdir(input) {
   if (!fs.existsSync(dir)) throw new Error(t('srv.dir.notFound', { dir }));
   if (!fs.statSync(dir).isDirectory()) throw new Error(t('srv.dir.notDir', { dir }));
   dir = fs.realpathSync(dir);
-  if (dir === '/' || dir === os.homedir() || dir === '/Users') throw new Error(t('srv.dir.tooBroad'));
+  if (dir === path.parse(dir).root || dir.toLowerCase() === os.homedir().toLowerCase() || dir === '/Users') throw new Error(t('srv.dir.tooBroad'));
   return dir;
 }
 
@@ -183,7 +183,7 @@ export function spawnRunner(runId) {
   const log = fs.openSync(path.join(dir, 'runner.log'), 'a');
   const child = spawn(process.execPath, [path.join(ROOT, 'src', 'runner.js'), runId], {
     cwd: dir,
-    detached: true,
+    detached: true, windowsHide: true,
     stdio: ['ignore', log, log],
     env: process.env,
   });
@@ -638,7 +638,7 @@ function startJob(kind, { title, prompt, cwd, settings, meta = {} }) {
 
 // ---------- git helpers for the review panel ----------
 
-const GIT = () => findExecutable('git', ['/usr/bin']) || '/usr/bin/git';
+const GIT = () => findExecutable('git', ['/usr/bin']) || 'git';
 
 async function git(dir, args, opts = {}) {
   return execText(GIT(), ['-C', dir, '-c', 'core.quotepath=false', ...args], { timeoutMs: 30_000, maxBytes: opts.maxBytes ?? 8_000_000 });
@@ -794,7 +794,7 @@ export function startNewPrompt({ dir = '', requirement }) {
 
 // ---------- shell commands from the composer: !`cmd` injection, !!`cmd` bash mode, "execute" custom commands ----------
 
-const SHELL = fs.existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/sh';
+
 
 export async function execCommand({ dir, command, timeoutMs = 30_000, confirmed = false }) {
   const root = resolveWorkdir(dir);
@@ -804,7 +804,7 @@ export async function execCommand({ dir, command, timeoutMs = 30_000, confirmed 
   if (rule && !confirmed) return { needsConfirm: true, rule: { id: rule.id, description: rule.builtin ? t(`safety.rule.${rule.id}`) : rule.description || rule.pattern } };
   let output = '';
   const started = Date.now();
-  const res = await runProcess(SHELL, ['-c', `{ ${cmd}\n} 2>&1`], {
+  const res = await runProcess(SHELL, shellArgs(cmd, true), {
     cwd: root,
     env: await baseChildEnv(),
     timeoutMs: Math.max(1000, Math.min(10 * 60_000, Number(timeoutMs) || 30_000)),

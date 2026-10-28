@@ -174,7 +174,7 @@ export function ensureLooper() {
   ensureDirs();
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const log = fs.openSync(path.join(LOG_DIR, 'looper.log'), 'a');
-  const child = spawn(process.execPath, [path.join(ROOT, 'src', 'looper.js')], { detached: true, stdio: ['ignore', log, log], env: process.env, cwd: DATA_DIR });
+  const child = spawn(process.execPath, [path.join(ROOT, 'src', 'looper.js')], { detached: true, windowsHide: true, stdio: ['ignore', log, log], env: process.env, cwd: DATA_DIR });
   child.unref();
   fs.closeSync(log);
   return child.pid;

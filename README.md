@@ -4,7 +4,7 @@
 
 > You take a nap; it keeps watch over the dream.
 
-A local two-agent loop for macOS (desktop app, browser UI and command line). Two roles, and you choose who plays each:
+A local two-agent loop for macOS and Windows (desktop app, browser UI and command line). Two roles, and you choose who plays each:
 
 - **The lead — plans and audits.** It researches, writes the plan, gives the executor one instruction per round, and after every round reads the diff, opens files, runs the tests and decides what happens next. It never changes your project.
 - **The executor — does the work.** It reads and writes the files and runs the commands — alone, or as a **team** of parallel teammates.
@@ -35,7 +35,8 @@ The lines of poetry on the home page are about sleep and dozing — Meng Haoran,
 
 | Needed | Notes |
 |---|---|
-| macOS + Node.js ≥ 20 | e.g. `brew install node` or nvm |
+| macOS or Windows 10/11 x64 | Windows desktop downloads include Node.js; source/CLI use needs Node.js ≥ 20 (Windows builds need Node.js 24) |
+| Git | Required for snapshots, rollback and Team Mode; install Git for Windows on Windows |
 | The engines you use | any of the four; the defaults need the first and the last |
 | · GPT | Codex CLI: `npm i -g @openai/codex` |
 | · Claude | Claude Code: `npm i -g @anthropic-ai/claude-code` |
@@ -50,7 +51,22 @@ node bin/wbloop.js doctor
 
 ## Starting
 
-**App (recommended)**
+**Windows:** download the `windows-x64-setup.exe` installer or the `windows-x64.zip` archive from [Releases](https://github.com/snozzz/oneiropolos/releases). Run the installer, or extract the entire ZIP and open `Oneiropolos.exe`. The desktop app includes its own Node.js runtime. Install the engines you use separately; Windows installations of WorkBuddy and DeepSeek Harness are found through the registry, or set their install folders under Settings → Accounts → Advanced.
+
+Windows shortcuts use **Ctrl** instead of ⌘ and **Alt** instead of ⌥. Check commands, hooks and custom commands run in **cmd.exe** (e.g. `npm test`); invoke `powershell.exe -NoProfile -Command "…"` explicitly for PowerShell syntax. Claude and WorkBuddy leads on Windows use read-only file/web tools without shell access, since their macOS shell sandbox/gate cannot enforce Windows writes. The app runs the configured check command separately. Windows Team Mode copies files instead of using APFS clones.
+
+Build Windows from source on Windows with Node.js 24:
+
+```powershell
+npm ci
+npm test
+npm run build:windows
+# Installer, ZIP and SHA256SUMS.txt: dist/windows/
+```
+
+The Windows binaries are unsigned. The **Windows build** GitHub Actions workflow builds on version tags, publishes release assets, and can also be run manually.
+
+**macOS app**
 
 ```bash
 bash app/build-app.sh                       # builds dist/Oneiropolos.app

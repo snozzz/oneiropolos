@@ -4,7 +4,7 @@
 
 > 你打个盹，它替你照看这场梦。
 
-一个本地的双智能体闭环编排器（macOS App、浏览器界面和命令行）。两个角色，谁来担任由你选：
+一个本地的双智能体闭环编排器（macOS / Windows App、浏览器界面和命令行）。两个角色，谁来担任由你选：
 
 - **审计（主管）**：调研、拆计划、每轮给执行方一条指令；每轮结束后读 diff、亲自看文件、跑测试，再决定下一步。它从不改动你的项目。
 - **执行**：真正读写文件、运行命令——可以一个人干，也可以组成**团队**并行干。
@@ -35,7 +35,8 @@
 
 | 需要 | 说明 |
 |---|---|
-| macOS + Node.js ≥ 20 | 例如 `brew install node` 或 nvm |
+| macOS 或 Windows 10/11 x64 | Windows 桌面下载版内置 Node.js；源码/命令行需要 Node.js ≥ 20（Windows 打包需要 Node.js 24） |
+| Git | 快照、回滚和团队模式需要；Windows 请安装 Git for Windows |
 | 用到的引擎 | 四个里任选；默认组合需要 GPT 和 WorkBuddy |
 | · GPT | Codex CLI：`npm i -g @openai/codex` |
 | · Claude | Claude Code：`npm i -g @anthropic-ai/claude-code` |
@@ -49,6 +50,21 @@ node bin/wbloop.js doctor
 ```
 
 ## 启动
+
+**Windows：** 从 [Releases](https://github.com/snozzz/oneiropolos/releases) 下载 `windows-x64-setup.exe` 安装版，或 `windows-x64.zip` 免安装版。安装后启动，或把 ZIP **完整解压**后打开 `Oneiropolos.exe`。桌面版本内置 Node.js，所用的引擎仍需单独安装。WorkBuddy 和 DeepSeek Harness 的 Windows 安装目录从注册表自动查找，也可以在“设置 → 账户 → 高级”里指定。
+
+Windows 快捷键用 **Ctrl** 对应 ⌘、**Alt** 对应 ⌥。验收命令、钩子和自定义命令使用 **cmd.exe**（例如 `npm test`）；PowerShell 语法请显式调用 `powershell.exe -NoProfile -Command "……"`。Windows 上 Claude 和 WorkBuddy 作为审计方时只使用只读文件和联网工具，不开放命令执行；验收命令由程序单独运行。团队工作区使用普通文件复制。
+
+在 Windows 上从源码构建（Node.js 24）：
+
+```powershell
+npm ci
+npm test
+npm run build:windows
+# 安装包、ZIP 和 SHA256SUMS.txt 位于 dist/windows/
+```
+
+Windows 安装包尚未进行代码签名。仓库的 **Windows build** GitHub Actions 工作流会在版本标签推送后构建并发布，也可手动构建。
 
 **App（推荐）**
 

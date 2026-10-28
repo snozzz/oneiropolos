@@ -7,7 +7,9 @@ import { oneLine, runProcess, truncate } from '../util.js';
 
 export function relPath(file, cwd) {
   if (!file || typeof file !== 'string') return '';
-  if (cwd && file.startsWith(cwd + path.sep)) return file.slice(cwd.length + 1);
+  const normalized = file.replaceAll('\\', '/');
+  const root = cwd?.replaceAll('\\', '/').replace(/\/$/, '');
+  if (root && normalized.startsWith(root + '/')) return normalized.slice(root.length + 1);
   return file;
 }
 

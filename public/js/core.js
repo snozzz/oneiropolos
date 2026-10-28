@@ -6,7 +6,7 @@ export const TOKEN = document.querySelector('meta[name="wbloop-token"]').content
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const native = window.webkit?.messageHandlers?.wbloop || null;
+export const native = window.oneiropolos || window.webkit?.messageHandlers?.wbloop || null;
 if (native) document.documentElement.classList.add('native');
 
 // a value the dictionary doesn't know (e.g. a new reasoning level) is shown as it is, not as a raw key
@@ -245,6 +245,9 @@ export function applyTheme(theme) {
 
 // ---------- the native shell ----------
 const nativeCallbacks = new Map();
+window.addEventListener('message', (event) => {
+  if (event.source === window && event.origin === location.origin && event.data?.source === 'oneiropolos-native') window.__wbloopNative.resolve(event.data.id, event.data.value);
+});
 window.__wbloopNative = {
   resolve(id, value) {
     const cb = nativeCallbacks.get(id);

@@ -1,6 +1,6 @@
 {
   "name": "wbloop",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Oneiropolos (守梦人 · 夢守): a lead plans and audits, an executor does the work — GPT, Claude, DeepSeek or WorkBuddy in either role — a local agent orchestrator with snow-cli style sub-agents, Team Mode, hooks, skills and MCP",
   "type": "module",
   "bin": {
@@ -14,8 +14,17 @@
     "serve": "node bin/wbloop.js serve --open",
     "doctor": "node bin/wbloop.js doctor",
     "build:app": "bash app/build-app.sh",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "app:windows": "electron .",
+    "build:windows": "electron-builder --config app/windows/builder.cjs --win --publish never && node app/windows/checksums.cjs",
+    "build:windows:dir": "electron-builder --config app/windows/builder.cjs --win --dir --publish never"
   },
   "license": "MIT",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0"
+  },
+  "main": "app/windows/main.cjs",
+  "author": "snozzz"
 }

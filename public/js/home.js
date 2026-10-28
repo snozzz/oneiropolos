@@ -60,10 +60,10 @@ export function renderLede() {
   lede.classList.toggle('hidden', app.runs.length > 0);
 }
 
-const dirName = (d) => String(d).replace(/\/+$/, '').split('/').pop() || d;
+const dirName = (d) => String(d).replace(/\/+$/, '').replaceAll('\\', '/').split('/').pop() || d;
 
 function parentShort(d) {
-  const parts = shortPath(d).replace(/\/+$/, '').split('/').slice(0, -1);
+  const parts = shortPath(d).replace(/\/+$/, '').replaceAll('\\', '/').split('/').slice(0, -1);
   return parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : parts.join('/') || '/';
 }
 

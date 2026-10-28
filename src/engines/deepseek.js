@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { t } from '../i18n.js';
 import { DATA_DIR } from '../paths.js';
-import { baseChildEnv, oneLine, readJson, runProcess, sleep, truncate, writeJsonAtomic } from '../util.js';
+import { windowsAppDirs, killProcessTree, processCommandLine, baseChildEnv, oneLine, readJson, runProcess, sleep, truncate, writeJsonAtomic } from '../util.js';
 import { openUrl } from '../workbuddy.js';
 import { clip, leadEventMapper, summarizeToolInput, toolInputDetail } from './streamjson.js';
 
@@ -30,9 +30,12 @@ export function homeOf(cfg) {
 
 export function find(cfg) {
   const candidates = [cfg?.deepseek?.appPath, '/Applications/DeepSeek Harness.app', path.join(os.homedir(), 'Applications/DeepSeek Harness.app')].filter(Boolean);
+  if (process.platform === 'win32') candidates.push(...windowsAppDirs('DeepSeek Harness'));
+  if (process.platform === 'win32') candidates.push(...[process.env.LOCALAPPDATA, process.env.ProgramFiles].filter(Boolean).flatMap((base) => [path.join(base, 'DeepSeek Harness'), path.join(base, 'Programs/DeepSeek Harness')]));
   for (const app of candidates) {
-    const exe = path.join(app, 'Contents/MacOS/DeepSeek Harness');
-    const asar = path.join(app, 'Contents/Resources/app.asar');
+    const windows = fs.existsSync(path.join(app, 'DeepSeek Harness.exe'));
+    const exe = path.join(app, windows ? 'DeepSeek Harness.exe' : 'Contents/MacOS/DeepSeek Harness');
+    const asar = path.join(app, windows ? 'resources/app.asar' : 'Contents/Resources/app.asar');
     if (fs.existsSync(exe) && fs.existsSync(asar)) {
       let version = '';
       try {
@@ -40,7 +43,7 @@ export function find(cfg) {
       } catch {
         // unknown
       }
-      return { app, exe, entry: path.join(app, ENTRY_REL), version };
+      return { app, exe, entry: windows ? path.join(asar, 'dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js') : path.join(app, ENTRY_REL), version };
     }
   }
   return null;
@@ -100,8 +103,8 @@ function killStaleHost(cfg) {
   if (!pid) return;
   try {
     // only if that pid is still a DSH web host (pids get reused)
-    const cmd = execFileSync('/bin/ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
-    if (/DeepSeek Harness/.test(cmd) && /--profile web/.test(cmd)) process.kill(-pid, 'SIGTERM');
+    const cmd = processCommandLine(pid);
+    if (/DeepSeek Harness/.test(cmd) && /--profile web/.test(cmd)) killProcessTree(pid);
   } catch {
     // already gone
   }
@@ -113,7 +116,7 @@ async function withWebHost(cfg, fn, { signal } = {}) {
   if (!found) throw new Error(t('srv.deepseek.missing'));
   killStaleHost(cfg);
   const child = spawn(found.exe, [found.entry, '--profile', 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'], {
-    env: await env(cfg, found), cwd: homeOf(cfg), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
+    env: await env(cfg, found), cwd: homeOf(cfg), stdio: ['ignore', 'pipe', 'pipe'], detached: true, windowsHide: true,
   });
   let out = '';
   let err = '';
@@ -126,7 +129,7 @@ async function withWebHost(cfg, fn, { signal } = {}) {
   writeJsonAtomic(hostPidFile(cfg), { pid: child.pid, at: new Date().toISOString() });
   const stop = () => {
     try {
-      process.kill(-child.pid, 'SIGTERM');
+      killProcessTree(child.pid);
     } catch {
       // gone
     }

@@ -5,6 +5,17 @@ Repo: https://github.com/snozzz/oneiropolos — every module lands as its own co
 
 ## Current round (2026-10-25)
 
+Windows release 0.4.2 (0.4.1 was the initial source tag):
+
+- Added `app/windows/` Electron shell, native folder picker, Ctrl shortcuts, external links, and an NSIS installer plus ZIP with a bundled Node.js 24 runtime. Existing Swift build remains available.
+- Ported PATH/CLI discovery (including npm shims), check commands/hooks (cmd.exe), process-tree cancellation, runner detection, system proxy, Windows toast notifications/idle sleep prevention, Team Mode copies, and Explorer integration.
+- Finds WorkBuddy and DeepSeek Harness from Windows uninstall registry entries, including custom install locations. WorkBuddy's separate auth file is under LocalAppData/CodeBuddyExtension/Data/Public/auth.
+- Claude and WorkBuddy leads on native Windows cannot run shell tools; the configured check command still runs independently. This preserves their read-only role without relying on unavailable Unix sandboxes or Unix command filters.
+- `npm ci && npm test && npm run build:windows`; artifacts and SHA256SUMS.txt in dist/windows. Windows build workflow builds/publishes on version tags and also supports manual builds. Binaries are unsigned.
+- Verified on Windows 11 x64: all 46 tests pass; packaged app launches with its bundled Node; native folder dialog returns the chosen Windows path; Ctrl shortcuts render correctly; real installed WorkBuddy --version and DeepSeek --help both exit 0. No real paid model task or sign-in was performed.
+- User asked to remove the Windows File / Edit / View / Help menu bar; 0.4.2 removes it and handles Ctrl shortcuts directly. Native title bar and in-app controls remain.
+- Release assets: Oneiropolos-0.4.2-windows-x64-setup.exe, Oneiropolos-0.4.2-windows-x64.zip, SHA256SUMS.txt. Local QA uses isolated homes under dist/.
+
 Asked for:
 
 1. Lead (plans + audits) and executor can each be any engine: ChatGPT (Codex), Claude (Claude Code), DeepSeek

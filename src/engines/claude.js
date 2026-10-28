@@ -151,8 +151,8 @@ export async function lead(o) {
   const args = [
     ...baseArgs({ ...o, sessionId: o.threadId || o.newId, resume: Boolean(o.threadId) }),
     '--permission-mode', 'bypassPermissions',
-    '--disallowedTools', [...WRITE_TOOLS, ...DISALLOWED].join(','),
-    '--settings', JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false } }),
+    '--disallowedTools', [...WRITE_TOOLS, ...DISALLOWED, ...(process.platform === 'win32' ? ['Bash', 'PowerShell'] : [])].join(','),
+    '--settings', JSON.stringify({ sandbox: { enabled: process.platform !== 'win32', autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false } }),
   ];
   if (o.schema) args.push('--json-schema', o.schema);
   const r = await runStreamJson({

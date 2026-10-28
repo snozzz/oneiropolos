@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DATA_DIR, ensureDirs } from './paths.js';
 import { t } from './i18n.js';
-import { baseChildEnv, execText, findExecutable, isExecutable, oneLine, readJson, runProcess, truncate, writeJsonAtomic } from './util.js';
+import { spawnCommand, killProcessTree, baseChildEnv, execText, findExecutable, isExecutable, oneLine, readJson, runProcess, truncate, writeJsonAtomic } from './util.js';
 
 const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 
@@ -334,7 +334,7 @@ export async function codexRateLimitsLive(found, { timeoutMs = 20_000, home = ''
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(found.path, ['app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'], detached: true });
+      child = spawnCommand(found.path, ['app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'], detached: process.platform !== 'win32' });
     } catch {
       resolve(null);
       return;
@@ -346,7 +346,7 @@ export async function codexRateLimitsLive(found, { timeoutMs = 20_000, home = ''
       done = true;
       clearTimeout(timer);
       try {
-        process.kill(-child.pid, 'SIGTERM');
+        killProcessTree(child.pid);
       } catch {
         // gone
       }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { gpt, setupFakeEnv } from './fakes.js';
+import { gpt, setupFakeEnv, shellJs } from './fakes.js';
 
 process.env.WBLOOP_TEST_FAST = '1';
 const env = setupFakeEnv({
@@ -19,7 +19,7 @@ const { appendControl, readEvents, readState } = await import('../src/store.js')
 test('Plan Mode: a message revises the plan, approval starts execution; hooks inject context and ask the user', async (t) => {
   t.after(env.cleanup);
   env.writeHook('onSessionStart', [{ description: 'ctx', hooks: [{ type: 'context', content: 'SESSION-CONTEXT-42' }] }]);
-  env.writeHook('onUserMessage', [{ description: 'tag', hooks: [{ type: 'command', command: 'echo \'{"additionalContext":"from-hook"}\'' }] }]);
+  env.writeHook('onUserMessage', [{ description: 'tag', hooks: [{ type: 'command', command: shellJs('console.log(JSON.stringify({additionalContext:"from-hook"}))') }] }]);
   env.writeHook('beforeSubAgentStart', [{ description: 'pre', hooks: [{ type: 'context', content: 'BEFORE-AGENT-CONTEXT' }] }]);
   env.writeHook('onSubAgentComplete', [{ description: 'ask', hooks: [{ type: 'prompt', prompt: 'Anything to add before GPT audits?' }] }]);
   const settings = { ...env.settings, loop: { maxRounds: 5, finalReview: false }, agents: { mode: 'plan' } };

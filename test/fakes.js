@@ -123,13 +123,14 @@ export function setupFakeEnv({ codexTurns, wbCalls, wbByMember = null, badModels
   const codexHome = path.join(base, 'codex-home');
   const work = path.join(base, 'work');
   const app = path.join(base, 'FakeWorkBuddy.app');
-  const cliDir = path.join(app, 'Contents/Resources/app.asar.unpacked/cli');
+  const cliDir = path.join(app, process.platform === 'win32' ? 'resources/app.asar.unpacked/cli' : 'Contents/Resources/app.asar.unpacked/cli');
   for (const d of [home, codexHome, work, path.join(app, 'Contents/MacOS'), path.join(cliDir, 'bin')]) fs.mkdirSync(d, { recursive: true });
 
   const codexPath = path.join(base, 'codex');
   fs.writeFileSync(codexPath, FAKE_CODEX, { mode: 0o755 });
   fs.writeFileSync(path.join(cliDir, 'bin/codebuddy'), FAKE_WB_CLI, { mode: 0o755 });
-  fs.writeFileSync(path.join(app, 'Contents/MacOS/Electron'), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  if (process.platform === 'win32') fs.copyFileSync(process.execPath, path.join(app, 'WorkBuddy.exe'));
+  else fs.writeFileSync(path.join(app, 'Contents/MacOS/Electron'), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
   fs.writeFileSync(path.join(cliDir, 'product.json'), JSON.stringify({ authentication: { id: 'workbuddy-desktop' }, genieVersion: '9.9.9', models: [{ id: 'auto', name: 'Auto' }] }));
   fs.writeFileSync(path.join(cliDir, 'package.json'), JSON.stringify({ name: 'fake', publishConfig: { customPackage: { version: '1.0.0' } } }));
 
@@ -179,3 +180,5 @@ export function setupFakeEnv({ codexTurns, wbCalls, wbByMember = null, badModels
     cleanup: () => fs.rmSync(base, { recursive: true, force: true }),
   };
 }
+
+export const shellJs = (code) => `node -e "eval(Buffer.from('${Buffer.from(code).toString('base64')}','base64').toString())"`;

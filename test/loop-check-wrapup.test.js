@@ -18,7 +18,7 @@ const { readEvents, readState } = await import('../src/store.js');
 
 test('the check command runs every round and goes to GPT; at the round limit GPT wraps up before pausing', async (t) => {
   t.after(env.cleanup);
-  const settings = { ...env.settings, loop: { maxRounds: 1, finalReview: false, checkCommand: 'echo CHECK-OK; cat a.txt; exit 3' } };
+  const settings = { ...env.settings, loop: { maxRounds: 1, finalReview: false, checkCommand: process.platform === 'win32' ? 'echo CHECK-OK & type a.txt & exit /b 3' : 'echo CHECK-OK; cat a.txt; exit 3' } };
   const run = createTask({ goal: 'test goal', workdir: env.work, settings });
   const orch = new Orchestrator(run.id);
   const watcher = setInterval(() => {

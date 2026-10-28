@@ -1,0 +1,37 @@
+name: Windows build
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Oneiropolos-Windows-x64
+          path: |
+            dist/windows/Oneiropolos-*.exe
+            dist/windows/Oneiropolos-*.zip
+            dist/windows/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Publish Windows release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          $assets = Get-ChildItem -Path 'dist/windows/Oneiropolos-*.exe','dist/windows/Oneiropolos-*.zip','dist/windows/SHA256SUMS.txt' -File | ForEach-Object { $_.FullName }
+          gh release create "$env:RELEASE_TAG" @assets --verify-tag --title "Oneiropolos $env:RELEASE_TAG · Windows" --notes-file app/windows/release-notes.md

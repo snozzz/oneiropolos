@@ -1,7 +1,7 @@
 // Entry point: sidebar, routing, global shortcuts, command palette.
 import { $, $$, ACTIVE, actions, api, app, applyTheme, esc, firstLine, fmtRelative, loadUi, native, oneLine, tPhase, tStatus } from './core.js';
 import { ICON, BRAND, statusGlyph } from './brand.js';
-import { lang, locale, t, translateDom } from './i18n.js';
+import { lang, locale, t, translateDom, shortcut } from './i18n.js';
 import { applyTemplate, fillTemplate, findTemplate, focusGoal, goalText, initHome, insertIntoGoal, loadTemplates, openParams, openTemplateMenu, pickFolder, pickRunSettings, renderHero, renderLede, setNewMode, setNewTeam, updateHomeChips } from './home.js';
 import { closeModal, closePalette, closePopover, modalOpen, openPalette, paletteOpen, popoverOpen } from './overlay.js';
 import { initContextMenus } from './ctxmenu.js';
@@ -181,9 +181,9 @@ function openCommandPalette() {
     }
     const g = t('palette.common');
     items.push(
-      { group: g, icon: 'plus', title: t('side.newTask'), kbd: '⌘N', keys: 'new xinrenwu', run: () => { location.hash = '#new'; focusGoal(); } },
-      { group: g, icon: 'gear', title: t('settings.title'), kbd: '⌘,', keys: 'settings shezhi', run: () => openSettings() },
-      { group: g, icon: 'help', title: t('help.title'), kbd: '⌘/', keys: 'help bangzhu shortcuts', run: openHelp },
+      { group: g, icon: 'plus', title: t('side.newTask'), kbd: shortcut('⌘N'), keys: 'new xinrenwu', run: () => { location.hash = '#new'; focusGoal(); } },
+      { group: g, icon: 'gear', title: t('settings.title'), kbd: shortcut('⌘,'), keys: 'settings shezhi', run: () => openSettings() },
+      { group: g, icon: 'help', title: t('help.title'), kbd: shortcut('⌘/'), keys: 'help bangzhu shortcuts', run: openHelp },
       { group: g, icon: 'prompt', title: t('palette.prompts'), keys: 'system prompt role tishici', run: () => openSettings('prompts') },
       { group: g, icon: 'agents', title: t('palette.agents'), keys: 'agents subagent daili', run: () => openSettings('agents') },
       { group: g, icon: 'shield', title: t('palette.safety'), keys: 'safety sensitive yolo anquan', run: () => openSettings('safety') },

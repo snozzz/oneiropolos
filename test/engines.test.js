@@ -92,7 +92,12 @@ fs.mkdirSync(path.join(dshApp, 'Contents/Resources'), { recursive: true });
 fs.writeFileSync(path.join(dshApp, 'Contents/Resources/app.asar'), '');
 const dshScriptFile = path.join(env.base, 'fake-dsh.js');
 fs.writeFileSync(dshScriptFile, FAKE_DSH, { mode: 0o755 });
-fs.writeFileSync(path.join(dshApp, 'Contents/MacOS/DeepSeek Harness'), `#!/bin/sh\nexec "${process.execPath}" "${dshScriptFile}" "$@"\n`, { mode: 0o755 });
+if (process.platform === 'win32') {
+  fs.mkdirSync(path.join(dshApp, 'resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib'), {recursive:true});
+  fs.copyFileSync(process.execPath,path.join(dshApp,'DeepSeek Harness.exe'));
+  fs.writeFileSync(path.join(dshApp,'resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js'),FAKE_DSH);
+}
+else fs.writeFileSync(path.join(dshApp, 'Contents/MacOS/DeepSeek Harness'), `#!/bin/sh\nexec "${process.execPath}" "${dshScriptFile}" "$@"\n`, { mode: 0o755 });
 const dshScript = path.join(env.base, 'dsh-script.json');
 fs.writeFileSync(dshScript, JSON.stringify({ execCalls: [{ writeFiles: { 'd.txt': 'D' } }] }));
 Object.assign(process.env, { FAKE_CLAUDE_SCRIPT: claudeScript, FAKE_DSH_SCRIPT: dshScript });
@@ -129,7 +134,8 @@ test('Claude leads, DeepSeek executes: verdicts via --json-schema, work via DSH 
   assert.equal(lc.length, 2);
   assert.ok(lc[0].args.includes('--json-schema'));
   assert.equal(lc[0].args[lc[0].args.indexOf('--model') + 1], 'opus');
-  assert.ok(lc[0].args.join(' ').includes('"sandbox":{"enabled":true'), 'Bash runs sandboxed');
+  if (process.platform === 'win32') assert.ok(lc[0].args[lc[0].args.indexOf('--disallowedTools')+1].includes('Bash'), 'Windows lead cannot invoke an unsandboxed shell');
+  else assert.ok(lc[0].args.join(' ').includes('"sandbox":{"enabled":true'), 'Bash runs sandboxed');
   assert.ok(lc[0].args[lc[0].args.indexOf('--disallowedTools') + 1].includes('Write'), 'no file-writing tools for the lead');
   assert.ok(lc[0].cwd.endsWith('gpt-scratch'), 'the lead works from a scratch directory');
   assert.ok(lc[0].configDir.endsWith('claude-home'), 'own config directory');
@@ -141,7 +147,8 @@ test('Claude leads, DeepSeek executes: verdicts via --json-schema, work via DSH 
   assert.equal(dc[0].mode, 'workspace-write');
   assert.equal(dc[0].asNode, '1');
   assert.ok(dc[0].home.endsWith('dsh-home'));
-  assert.ok(dc[0].args[0].endsWith('app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js'), 'the signed entry inside app.asar');
+  if (process.platform === 'win32') assert.equal(dc[0].args[0], '--profile', 'Node consumes the CLI entry before its arguments');
+  else assert.ok(dc[0].args[0].endsWith('app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js'), 'the signed entry inside app.asar');
   assert.deepEqual(dc[0].patch.find((r) => r.id === 'approval').config, { policy: 'never' });
   assert.equal(dc[0].patch.find((r) => r.id === 'permission').config.defaultPreset, 'unattended-write');
   assert.equal(dc[0].patch.find((r) => r.id === 'agent-default-model').config.model, 'deepseek-v4-pro');
@@ -178,7 +185,7 @@ test('WorkBuddy leads, ChatGPT executes: read-only gate for the lead, workspace-
   const wb = env.wbCalls();
   assert.equal(wb.length, 2);
   assert.ok(wb[0].args.includes('--json-schema'));
-  assert.equal(wb[0].args[wb[0].args.indexOf('--tools') + 1], 'Read,Glob,Grep,Bash,WebFetch,WebSearch,ToolSearch,StructuredOutput');
+  assert.equal(wb[0].args[wb[0].args.indexOf('--tools') + 1], process.platform === 'win32' ? 'Read,Glob,Grep,WebFetch,WebSearch,ToolSearch,StructuredOutput' : 'Read,Glob,Grep,Bash,WebFetch,WebSearch,ToolSearch,StructuredOutput');
   assert.ok(wb[0].args.join(' ').includes('hook-gate.js') && wb[0].args.join(' ').includes(' readonly '), 'read-only gate on Bash');
   const cx = env.codexCalls();
   assert.equal(cx.length, 1);
