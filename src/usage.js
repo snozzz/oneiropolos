@@ -15,11 +15,11 @@ function dayOf(ms) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function recordUsage({ agent, model, input = 0, cached = 0, output = 0, runId = null, kind = '', at = Date.now() }) {
+export function recordUsage({ agent, engine = '', model, input = 0, cached = 0, output = 0, runId = null, kind = '', at = Date.now() }) {
   if (!input && !output) return;
   try {
     fs.mkdirSync(USAGE_DIR, { recursive: true });
-    fs.appendFileSync(path.join(USAGE_DIR, `${dayOf(at)}.jsonl`), `${JSON.stringify({ t: new Date(at).toISOString(), agent, model: model || '', in: input, cached, out: output, runId, kind })}\n`);
+    fs.appendFileSync(path.join(USAGE_DIR, `${dayOf(at)}.jsonl`), `${JSON.stringify({ t: new Date(at).toISOString(), agent, ...(engine ? { engine } : {}), model: model || '', in: input, cached, out: output, runId, kind })}\n`);
   } catch {
     // statistics are best effort
   }
@@ -130,8 +130,8 @@ export function usageReport({ period = '30d' } = {}) {
       tot.cached += r.cached || 0;
       tot.out += r.out || 0;
       tot.calls += 1;
-      const mk = `${agent}|${r.model || '-'}`;
-      const m = byModel.get(mk) || { agent, model: r.model || '-', in: 0, cached: 0, out: 0, calls: 0 };
+      const mk = `${agent}|${r.engine || ''}|${r.model || '-'}`;
+      const m = byModel.get(mk) || { agent, engine: r.engine || '', model: r.model || '-', in: 0, cached: 0, out: 0, calls: 0 };
       m.in += r.in || 0;
       m.cached += r.cached || 0;
       m.out += r.out || 0;

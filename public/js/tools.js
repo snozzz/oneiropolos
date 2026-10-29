@@ -3,6 +3,7 @@
 // prompt generator (/new-prompt), usage (/usage), loops (/loop), the project notebook (/notebook) and the team board (>>).
 import { $, $$, api, app, el, esc, fmtClock, fmtDuration, fmtRelative, fmtTime, fmtTokens, md, oneLine, shortPath, toast } from './core.js';
 import { ICON } from './brand.js';
+import { ENGINE_NAMES } from './engines.js';
 import { t } from './i18n.js';
 import { closeModal, confirmDialog, fuzzyScore, openModal } from './overlay.js';
 
@@ -383,10 +384,13 @@ export async function openUsage(period = '30d') {
     }
     const max = Math.max(1, ...r.byDay.map((d) => d.gpt + d.workbuddy));
     const card = (who, v) => `<div class="stat"><div class="k">${esc(who)}</div><div class="v">${fmtTokens(v.in + v.out)}</div><div class="s">${esc(t('usage.detail', { calls: v.calls, input: fmtTokens(v.in), cached: fmtTokens(v.cached), output: fmtTokens(v.out) }))}</div></div>`;
-    box.innerHTML = `<div class="stats">${card('GPT', r.totals.gpt)}${card('WorkBuddy', r.totals.workbuddy)}</div>
-      ${r.byDay.some((d) => d.gpt + d.workbuddy) ? `<div class="bars" title="${esc(t('usage.barsTitle'))}">${r.byDay.map((d) => `<div class="bar-col" title="${esc(`${d.key}: GPT ${fmtTokens(d.gpt)} · WorkBuddy ${fmtTokens(d.workbuddy)}`)}"><i class="wb" style="height:${(d.workbuddy / max) * 100}%"></i><i class="gpt" style="height:${(d.gpt / max) * 100}%"></i></div>`).join('')}</div>
-        <div class="bars-legend"><span><i class="gpt"></i>GPT</span><span><i class="wb"></i>WorkBuddy</span><span class="muted">${esc(r.byDay[0].key)} – ${esc(r.byDay[r.byDay.length - 1].key)}</span></div>` : `<p class="muted">${esc(t('usage.none'))}</p>`}
-      ${r.byModel.length ? `<table class="tbl"><thead><tr><th>${esc(t('usage.model'))}</th><th>${esc(t('usage.calls'))}</th><th>${esc(t('usage.input'))}</th><th>${esc(t('usage.cached'))}</th><th>${esc(t('usage.output'))}</th></tr></thead><tbody>${r.byModel.map((m) => `<tr><td><span class="dot ${m.agent === 'gpt' ? 'gpt' : 'wb'}"></span>${esc(m.model)}</td><td>${m.calls}</td><td>${fmtTokens(m.in)}</td><td>${fmtTokens(m.cached)}</td><td>${fmtTokens(m.out)}</td></tr>`).join('')}</tbody></table>` : ''}`;
+    const lead = t('usage.lead');
+    const exec = t('usage.exec');
+    const modelCell = (m) => (m.engine && !m.model.toLowerCase().includes(ENGINE_NAMES[m.engine]?.toLowerCase()) ? `${ENGINE_NAMES[m.engine] || m.engine} · ${m.model}` : m.model);
+    box.innerHTML = `<div class="stats">${card(lead, r.totals.gpt)}${card(exec, r.totals.workbuddy)}</div>
+      ${r.byDay.some((d) => d.gpt + d.workbuddy) ? `<div class="bars" title="${esc(t('usage.barsTitle'))}">${r.byDay.map((d) => `<div class="bar-col" title="${esc(`${d.key}: ${lead} ${fmtTokens(d.gpt)} · ${exec} ${fmtTokens(d.workbuddy)}`)}"><i class="wb" style="height:${(d.workbuddy / max) * 100}%"></i><i class="gpt" style="height:${(d.gpt / max) * 100}%"></i></div>`).join('')}</div>
+        <div class="bars-legend"><span><i class="gpt"></i>${esc(lead)}</span><span><i class="wb"></i>${esc(exec)}</span><span class="muted">${esc(r.byDay[0].key)} – ${esc(r.byDay[r.byDay.length - 1].key)}</span></div>` : `<p class="muted">${esc(t('usage.none'))}</p>`}
+      ${r.byModel.length ? `<table class="tbl"><thead><tr><th>${esc(t('usage.model'))}</th><th>${esc(t('usage.calls'))}</th><th>${esc(t('usage.input'))}</th><th>${esc(t('usage.cached'))}</th><th>${esc(t('usage.output'))}</th></tr></thead><tbody>${r.byModel.map((m) => `<tr><td><span class="dot ${m.agent === 'gpt' ? 'gpt' : 'wb'}"></span>${esc(modelCell(m))}</td><td>${m.calls}</td><td>${fmtTokens(m.in)}</td><td>${fmtTokens(m.cached)}</td><td>${fmtTokens(m.out)}</td></tr>`).join('')}</tbody></table>` : ''}`;
   };
   $$('#us-p button', body).forEach((b) => {
     b.onclick = () => {

@@ -4,7 +4,7 @@ import {
   fmtTime, fmtTokens, md, mdInline, msgText, oneLine, shortPath, tEffort, tPhase, tSeverity, tStatus, tVerdict, toast,
 } from './core.js';
 import { DONE_VERSE, EMBLEM, ICON, LAUREL } from './brand.js';
-import { modelName, roleLabel, roleSpec, useRoleNames } from './engines.js';
+import { ENGINE_NAMES, modelName, roleLabel, roleSpec, useRoleNames } from './engines.js';
 import { autosize, enhanceComposer } from './composer.js';
 import { setRoleNames, t } from './i18n.js';
 import { TASK_MODES, TEAM_MODES, mountSettingsForm, readSettingsForm, wbEffortText, wbModel } from './forms.js';
@@ -398,7 +398,7 @@ function ensureGptCard(label) {
   const wrap = label.startsWith('wrapup-');
   const node = appendThread(el(`
     <div class="msg right gpt${rev ? ' rev' : ''}${wrap ? ' wrap' : ''}">
-      <div class="msg-head"><span class="meta g-meta"></span><span class="g-verdict"></span><span class="what">${esc(gptTitle(label))}</span><span class="who">${esc(rev ? t('who.reviewer') : 'GPT')}</span>${emb(rev ? 'rev' : 'gpt')}</div>
+      <div class="msg-head"><span class="meta g-meta"></span><span class="g-verdict"></span><span class="what">${esc(gptTitle(label))}</span><span class="who">${esc(rev ? t('who.reviewer') : t('who.gpt'))}</span>${emb(rev ? 'rev' : 'gpt')}</div>
       <div class="card">
         <details class="g-steps hidden"><summary>${ICON.chev.replace('<svg', '<svg class="chev" width="10" height="10"')}<span class="g-n-label"></span></summary><ol class="steps"></ol></details>
         <div class="g-status"><span class="moonwait">${EMBLEM.user}</span><span class="txt">${esc(t('run.thinking'))}</span><span class="last"></span></div>
@@ -482,7 +482,7 @@ function ensureWbCard(n) {
   if (app.t.wb.has(`${n}`)) return app.t.wb.get(`${n}`);
   const node = appendThread(el(`
     <div class="msg wb" id="wb-${n}">
-      <div class="msg-head">${emb('wb')}<span class="who">WorkBuddy</span><span class="what">${esc(t('round.n', { n }))}</span><span class="meta w-meta"></span><span class="spacer"></span><button class="btn ghost xs act" type="button" data-prompt="wb-${n}">${esc(t('run.instructionReceived'))}</button></div>
+      <div class="msg-head">${emb('wb')}<span class="who">${esc(t('who.wb'))}</span><span class="what">${esc(t('round.n', { n }))}</span><span class="meta w-meta"></span><span class="spacer"></span><button class="btn ghost xs act" type="button" data-prompt="wb-${n}">${esc(t('run.instructionReceived'))}</button></div>
       <div class="wb-body">${WB_INNER()}
         <div class="round-foot hidden"></div>
         <div class="checkline hidden"></div>
@@ -785,6 +785,8 @@ function handleEvent(ev) {
   switch (ev.kind) {
     case 'gpt.start': {
       const c = gptCardFor(ev);
+      // the card names the engine that answered, even after the lead was switched mid-task
+      if (ev.engine && !c.label.startsWith('review-')) $('.who', c.node).textContent = ENGINE_NAMES[ev.engine] || ev.engine;
       app.t.prompts.set(ev.label, ev.prompt);
       if (!c.done) $('.g-status .txt', c.node).textContent = ev.resume ? t('run.thinking') : t('run.newSessionThinking');
       break;
@@ -858,6 +860,7 @@ function handleEvent(ev) {
       break;
     case 'wb.start': {
       const c = wbFor(ev);
+      if (ev.engine && !ev.member) $('.msg-head .who', c.node).textContent = ENGINE_NAMES[ev.engine] || ev.engine;
       const pkey = ev.member ? `wb-${ev.round}-${ev.member}` : `wb-${ev.round}`;
       // "instruction received" keeps the first full instruction of the round (continuations are short notes)
       if (!ev.continuation || !app.t.prompts.has(pkey)) app.t.prompts.set(pkey, ev.prompt);

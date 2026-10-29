@@ -462,7 +462,7 @@ export async function openSettings(tab = 'general') {
 
   // MCP
   const renderMcp = (summary) => {
-    $('#s-mcp-list', body).innerHTML = summary.length ? summary.map((m) => `<div class="rule-item${m.enabled ? '' : ' off'}"><div class="ri-main"><div class="ri-title">${esc(m.name)} <span class="pk-tag">${esc(m.kind)}</span>${m.targets.map((x) => ` <span class="pk-tag">${esc(x === 'gpt' ? 'GPT' : 'WorkBuddy')}</span>`).join('')}</div><div class="ri-sub mono">${esc(oneLine(m.detail, 160))}</div></div></div>`).join('') : `<p class="muted" style="font-size:12.5px">${esc(t('mcp.none'))}</p>`;
+    $('#s-mcp-list', body).innerHTML = summary.length ? summary.map((m) => `<div class="rule-item${m.enabled ? '' : ' off'}"><div class="ri-main"><div class="ri-title">${esc(m.name)} <span class="pk-tag">${esc(m.kind)}</span>${m.targets.map((x) => ` <span class="pk-tag">${esc(x === 'gpt' ? 'GPT' : 'Claude · WorkBuddy')}</span>`).join('')}</div><div class="ri-sub mono">${esc(oneLine(m.detail, 160))}</div></div></div>`).join('') : `<p class="muted" style="font-size:12.5px">${esc(t('mcp.none'))}</p>`;
   };
   renderMcp(data.mcpSummary);
   $('#s-mcp-save', body).onclick = async () => {

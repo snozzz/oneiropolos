@@ -33,7 +33,7 @@ ${OUTPUT_REMINDER}`;
 }
 
 export function workerPrompt({ round, instruction, workdir, handoff, hookContext }) {
-  return `${handoff ? `${handoff}\n\n` : ''}${hookContext ? `${hookContext}\n\n` : ''}[Round ${round} · instruction from the Lead (GPT)]
+  return `${handoff ? `${handoff}\n\n` : ''}${hookContext ? `${hookContext}\n\n` : ''}[Round ${round} · instruction from the Lead]
 
 ${instruction}
 
@@ -127,7 +127,7 @@ ${check.output || '(no output)'}
 export function workerOutcomeText(w) {
   if (!w) return '(none)';
   const status = w.ok ? 'finished normally' : w.interrupted ? 'interrupted by the user (they have something to say — see the user messages below)' : `did not finish normally: ${oneLine((w.errors || []).join('; '), 400)}`;
-  const report = w.resultText || (w.lastTexts || []).join('\n\n') || '(no report from WorkBuddy)';
+  const report = w.resultText || (w.lastTexts || []).join('\n\n') || '(no report from the Executor)';
   return `Status: ${status} · model ${w.model || '-'} · took ${formatDuration(w.durationMs)} · ${w.toolCalls?.length ?? w.toolCount ?? 0} tool calls${w.continuations ? ` · auto-continued ${w.continuations}×` : ''}
 
 ${truncate(report, 9000)}`;
@@ -165,7 +165,7 @@ ${reviewerNote ? `\n${reviewerNote}\n` : ''}
 ### The instruction for this round${instructionSource === 'reviewer' ? ' (from the independent Reviewer)' : ''}
 ${truncate(instruction, 3500)}
 ${team?.length ? formatTeam(team, merge) : `
-### WorkBuddy's report
+### The Executor's report
 ${workerOutcomeText(worker)}
 
 ### Tool-call summary
@@ -187,7 +187,7 @@ export function followupPrompt({ userMessages, note }) {
   return `${note ? `${note}\n\n` : ''}${userMessages?.length ? `## The user's reply / new requirements\n${list(userMessages)}\n\n` : ''}Update your judgement accordingly and give the next step (usually continue + next_instruction). ${OUTPUT_REMINDER}`;
 }
 
-/** The user interrupted a GPT turn with a message: answer again with it taken into account. */
+/** The user interrupted a Lead turn with a message: answer again with it taken into account. */
 export function interjectionNote(messages) {
   return `## The user just interrupted you with a message (consider it first; adjust your judgement and next step if needed)
 ${list(messages)}`;
@@ -227,18 +227,18 @@ export function reviewerNoteForAuditor(review) {
   return `> After you judged "done" last time, the independent Reviewer found the goal NOT finished: ${oneLine(review.assessment, 600)}
 > Issues it found:
 ${issues}
-> In this round WorkBuddy executed the Reviewer's fix instruction.`;
+> In this round the Executor carried out the Reviewer's fix instruction.`;
 }
 
 /** Reaching the round or token limit: no more work, summarise so the user can decide whether to continue. */
 export function wrapUpPrompt({ maxRounds, instruction, reason = 'rounds', budgetText = '' }) {
   const why = reason === 'budget' ? `the token budget (${budgetText})` : `the round limit (${maxRounds} rounds)`;
   return `## This task reached ${why}
-The program pauses here until the user decides whether to raise the limit. Nothing will be sent to WorkBuddy this time. Please:
+The program pauses here until the user decides whether to raise the limit. Nothing will be sent to the Executor this time. Please:
 1. In assessment, summarise what is done (with evidence), what is still missing, and any risks or blockers.
 2. Bring the plan up to date: finished steps done, remaining steps todo — clear enough for someone to pick it up.
 3. If the goal is in fact fully met with evidence: verdict "done".
-4. Otherwise verdict "continue", with next_instruction = the instruction to give WorkBuddy once the user raises the limit (you may keep or improve the one below).
+4. Otherwise verdict "continue", with next_instruction = the instruction to give the Executor once the user raises the limit (you may keep or improve the one below).
 5. Don't declare done just because the limit was reached, and don't inflate progress.
 
 (The instruction that was about to be sent)
@@ -247,14 +247,14 @@ ${truncate(instruction, 3500)}
 ${OUTPUT_REMINDER}`;
 }
 
-/** Plan Mode: the user is about to approve the plan; after approval GPT executes all phases continuously. */
+/** Plan Mode: the user is about to approve the plan; after approval the Lead runs all phases continuously. */
 export function planApprovedNote(extra) {
   return `The user APPROVED your plan.${extra ? ` Their note: ${extra}` : ''} Execute all phases continuously from now on without asking for confirmation between phases; verify every phase.`;
 }
 
 /** Side question (/btw): never enters the loop. */
 export function asidePrompt({ goal, workdir, plan, lastAudit, lastReport, question }) {
-  return `A coding task is running automatically (GPT plans and audits, WorkBuddy executes). The user asks you a side question; your answer is shown only to them and does not affect the task.
+  return `A coding task is running automatically (a Lead plans and audits, an Executor does the work). The user asks you a side question; your answer is shown only to them and does not affect the task.
 
 ## Task goal
 ${truncate(goal, 3000)}
@@ -268,7 +268,7 @@ ${planText(plan)}
 ## The Lead's latest assessment
 ${truncate(lastAudit?.assessment || '(none yet)', 2000)}
 
-## WorkBuddy's latest report
+## The Executor's latest report
 ${truncate(lastReport || '(none yet)', 3000)}
 
 ## The user's question
@@ -277,7 +277,7 @@ ${question}
 Answer directly and concisely, in the language of the question. Look at files or run read-only commands if you need to confirm something, but change nothing. Use Markdown.`;
 }
 
-/** Code review panel (/review): GPT reviews a diff without touching anything (snow-cli reviewAgent). */
+/** Code review panel (/review): the Lead reviews a diff without touching anything (snow-cli reviewAgent). */
 export function codeReviewPrompt({ title, diff, notes, workdir }) {
   return `You are a senior code reviewer. Review the following changes (${title}) in ${workdir} and give feedback.
 
@@ -304,7 +304,7 @@ Reply in the language of the user's notes if there are any, otherwise in the use
 
 /** Prompt generator (/new-prompt), from snow-cli's newPrompt. */
 export function newPromptPrompt({ requirement, projectContext, subagents }) {
-  return `You are a professional prompt engineer. The user describes a requirement; generate a well-structured, detailed task description they can hand to an autonomous coding loop (GPT plans and audits, WorkBuddy executes).
+  return `You are a professional prompt engineer. The user describes a requirement; generate a well-structured, detailed task description they can hand to an autonomous coding loop (a Lead plans and audits, an Executor does the work).
 
 ## Current project context
 ${projectContext || '(no working directory selected)'}
@@ -315,7 +315,7 @@ ${projectContext || '(no working directory selected)'}
 3. Use the project context for accurate technical details (stack, paths, conventions)
 4. Structure it: background, concrete requirements, constraints, acceptance criteria (how to verify it is done — tests, commands)
 5. Keep it focused, no meta-commentary
-${subagents?.length ? `6. WorkBuddy supports sub-agents (mention them as #id only when clearly useful):\n${subagents.map((a) => `   - #${a.id}: ${oneLine(a.description, 140)}`).join('\n')}\n` : ''}
+${subagents?.length ? `6. The Executor supports sub-agents (mention them as #id only when clearly useful):\n${subagents.map((a) => `   - #${a.id}: ${oneLine(a.description, 140)}`).join('\n')}\n` : ''}
 ## The user's requirement
 ${requirement}
 
@@ -327,12 +327,12 @@ export function restoreNote(label) {
   return `[System notice] The user restored the working directory to the snapshot "${label}"; all later file changes were undone. Re-assess progress from the current files and adjust the plan if needed.`;
 }
 
-/** GPT session lost (e.g. ~/.codex was cleaned): rebuild the context from the saved state. */
+/** Lead session lost or too long: rebuild the context from the saved state. */
 export function recapPrompt({ goal, workdir, maxRounds, plan, lastAudit, rounds, checkCommand, team, mode }) {
   const history = (rounds || []).slice(-20).map((r) => `- Round ${r.round}: ${oneLine(r.instruction, 200)} → ${r.audit ? `${r.audit.verdict}: ${oneLine(r.audit.assessment, 200)}` : 'not audited'}`).join('\n') || '(none)';
   return `${plannerPrompt({ goal, workdir, maxRounds, checkCommand, team, mode })}
 
-## Note: your previous GPT session was lost. Continue from the progress below (no need to plan the first step again)
+## Note: this is a fresh session. Continue from the progress below (no need to plan the first step again)
 ### Current plan
 ${planText(plan)}
 ### Rounds so far
