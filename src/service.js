@@ -6,7 +6,7 @@ import path from 'node:path';
 import { brandName } from './brand.js';
 import { codexInfo, codexRateLimitsFromRollouts, codexRateLimitsLive, defaultCodexModel, findCodex, listCodexModels, runCodexTurn } from './codex.js';
 import { DEFAULTS, deepMerge, loadConfig, replaceConfig, saveConfig, taskSettings } from './config.js';
-import { allStatus, engine, roleNames, roleSpec } from './engines/index.js';
+import { allStatus, engine, engineName, roleNames, roleSpec } from './engines/index.js';
 import { deleteCommand as delCmd, expandCommand, listCommands, saveCommand } from './commands.js';
 import { GLOBAL_HOOKS_DIR, HOOK_TYPES, readHookDir, writeHookType } from './hooks.js';
 import { clockText, currentLang, fmtDuration, locale, t } from './i18n.js';
@@ -382,7 +382,7 @@ export function exportMarkdown(id) {
     '',
     `> ${t('export.header', { app: brandName(), time: localTime(nowIso()) })}`,
     `> ${t('export.meta', { status: t(`status.${effectiveStatus(s)}`), rounds: s.round, elapsed: fmtDuration(elapsed), dir: s.workdir })}`,
-    `> GPT: ${set.codex?.model || '-'} (${set.codex?.effort || '-'}) · WorkBuddy: ${set.workbuddy?.model || 'auto'}${set.workbuddy?.effort ? ` (${set.workbuddy.effort})` : ''}${set.team?.mode && set.team.mode !== 'off' ? ` · ${t('export.team', { mode: set.team.mode })}` : ''}`,
+    `> ${[...(set.loop?.useLead === false ? [] : ['lead']), 'executor'].map((r) => roleLine(set, r)).join(' · ')}${set.team?.mode && set.team.mode !== 'off' ? ` · ${t('export.team', { mode: set.team.mode })}` : ''}`,
     '',
     `## ${t('export.goal')}`,
     '',
@@ -393,18 +393,22 @@ export function exportMarkdown(id) {
     out.push(`## ${t('export.plan')}`, '', ...s.plan.map((p, i) => `${i + 1}. [${p.status === 'done' ? 'x' : ' '}] ${p.title}${p.status === 'doing' ? ` (${t('plan.doing')})` : ''}`), '');
   }
   out.push(`## ${t('export.process')}`, '');
+  const execNames = new Map(events.filter((e) => e.kind === 'wb.start' && e.engine).map((e) => [`${e.round}|${e.member || ''}`, engineName(e.engine)]));
+  // each turn is named after the engine that answered it (the roles can change engines mid-task)
+  let leadName = roleSpec(set, 'lead').name;
   for (const ev of events) {
     const at = localTime(ev.t);
+    if (ev.kind === 'gpt.start' && ev.engine) leadName = engineName(ev.engine);
     if (ev.kind === 'gpt.result') {
       const o = ev.output || {};
-      out.push(`### ${ev.label?.startsWith('review-') ? t('who.reviewer') : 'GPT'} · ${gptLabelTitle(ev.label)} (${t(`verdict.${o.verdict}`)} · ${at})`, '', o.assessment || '', '');
+      out.push(`### ${ev.label?.startsWith('review-') ? t('who.reviewer') : leadName} · ${gptLabelTitle(ev.label)} (${t(`verdict.${o.verdict}`)} · ${at})`, '', o.assessment || '', '');
       if (o.issues?.length) out.push(...o.issues.map((i) => `- **${t(`severity.${i.severity}`)}**: ${i.detail}`), '');
       if (o.verdict === 'continue' && o.team?.length) out.push(`**${t('export.teamAssignments')}**`, '', ...o.team.map((m) => `- **${m.name}**${m.role ? ` (${m.role})` : ''}: ${oneLine(m.instruction, 400)}`), '');
       else if (o.verdict === 'continue' && o.next_instruction) out.push(`**${t('export.toWb')}**`, '', quote(o.next_instruction), '');
       if (o.verdict === 'ask_user' && o.question_for_user) out.push(`**${t('export.needYou')}**`, '', quote(o.question_for_user), '');
     } else if (ev.kind === 'wb.end') {
       const head = [ev.member ? `${ev.member}` : '', t('round.n', { n: ev.round }), ev.model, ev.toolCount != null ? t('export.tools', { n: ev.toolCount }) : '', ev.durationMs ? fmtDuration(ev.durationMs) : ''].filter(Boolean).join(' · ');
-      out.push(`### WorkBuddy · ${head}`, '');
+      out.push(`### ${execNames.get(`${ev.round}|${ev.member || ''}`) || roleSpec(set, 'executor').name} · ${head}`, '');
       if (!ev.ok) out.push(`*${t('export.notFinished', { err: oneLine((ev.errors || []).join('; '), 300) })}*`, '');
       if (ev.resultText) out.push(ev.resultText, '');
     } else if (ev.kind === 'round.diff' && ev.files) {
@@ -517,6 +521,12 @@ export async function restoreRun(id, commit) {
 
 const jobs = new Map();
 const JOBS_DIR = path.join(DATA_DIR, 'jobs');
+/** "Claude opus (high)" for the export header. */
+function roleLine(set, role) {
+  const sp = roleSpec(set, role);
+  return `${t(`role.short.${role}`)}: ${sp.name}${sp.model ? ` ${sp.model}` : ''}${sp.effort ? ` (${sp.effort})` : ''}`;
+}
+
 const asidesFile = (id) => path.join(runDir(id), 'asides.json');
 
 function saveAside(id, rec) {
