@@ -3,7 +3,63 @@
 Running notes for whoever picks this up next (human or agent). Newest first inside each section.
 Repo: https://github.com/snozzz/oneiropolos — every module lands as its own commit so it can be reverted alone.
 
-## Current round (2026-10-25)
+## Current round (2026-10-29) · 0.5.0
+
+Asked for:
+
+1. When the lead is not GPT, parts of the page still said "GPT".
+2. The planner (lead) emblem was ugly; the worker's hammer is fine.
+3. Chibi (Q版) characters for the executor engines (DeepSeek = the whale girl "大肥鱼", Claude = the orange young lady …).
+4. Take the best of [pi](https://github.com/earendil-works/pi), drop the rest; don't over-script the models, let them use their full ability.
+5. Prompt-cache hit rate: how each round works today, and save as many tokens as possible.
+6. A task-mode category to switch the lead off (single tasks may not need it).
+7. A CLI version (English first) where the user, the lead and the executor coexist well.
+
+Status: all seven done; see the module log. Open items at the end.
+
+| Module | Commit | Notes |
+| --- | --- | --- |
+| Tokens: exact WorkBuddy usage, cache hit rate, context cap | 632d8b0 | `normalizeUsage`, per-request sums in `streamjson.js`; `loop.sessionCapK`; `test/usage-accounting`, `test/loop-session-cap` |
+| Names follow the engines | 44d459b | cards name the engine of each turn (`gpt.start`/`wb.start` carry `engine`); usage panel by role; prompts say "the Lead"/"the Executor"; zh calls the lead 指导 |
+| Lead emblem: Daedalus' compass | 5c92b71 | `EMBLEM.gpt` in `public/js/brand.js` |
+| Prompts: native system prompt + short brief | eb824d1 | `src/sysprompts.js` rewritten; `buildSystemPrompt` returns `mode` append/replace |
+| Context cap in Settings, shorter tool summary | 1fab61f | Defaults → Flow → "Fresh session above" |
+| Lead on/off | 53475ae | `loop.useLead`; `doSolo*` phases in `src/loop.js`; "+" → Lead; `test/loop-solo` |
+| Chibi faces | d860dd6 | `public/chibi/<engine>.png` (384px) and `-face.png` (96px); `chibiFace()` |
+| CLI `onei` | dc8f773, ac66c63 | `src/tui.js`, `bin/onei.js`, `test/tui.test.js`; linked as `~/.local/bin/onei` |
+| Export names engines | c658437 | Markdown export header and turn titles |
+| Docs, version 0.5.0 | (this commit) | README en/zh: onei, Lead on/off, prompts and tokens |
+
+### How a round spends tokens (the analysis behind item 5)
+
+- Plan: one lead turn (new session) — its native system prompt + our brief + the planner prompt; it investigates with tools (each tool call = one more request that re-sends the whole session).
+- Work round N: the executor resumes its session (`--resume`), gets the instruction, and runs a tool loop. Every request re-sends system prompt + tools + all earlier rounds of this session.
+- Audit N: the lead resumes its thread with the round's report, tool summary (last 40 commands), diff (≤ 48 KB) and check output; it may read files itself.
+- Review: a fresh lead session with the whole diff since the start.
+- So cost ≈ (number of requests) × (session size). Cache hits make the repeated part cheap (Claude Code: 1-hour cache; DeepSeek/WorkBuddy and OpenAI: automatic prefix caching), but the size still matters. What was done:
+  1. **Accounting was wrong.** The CodeBuddy core inside WorkBuddy reports `result.usage` summed over the whole resumed session, and counts cached tokens inside `input_tokens`; we summed those per call *and* added the cache again. One task showed 5.8 B tokens and a 44 % hit rate; per request the hit rate is ~98 %. Verified with a real 3-call session (34 k → 69 k → 87 k cumulative). Claude Code (`result.usage` per invocation, input excludes cache) and Codex (`turn.completed` per turn, input includes cache) were right. Now WorkBuddy usage is summed from the per-request `assistant` messages. Older records in `~/.wbloop/usage` stay inflated.
+  2. **Stable prefix.** The briefs have no date or per-call text, so the system prompt is byte-identical for the whole task. Claude Code also snapshots its system prompt per conversation.
+  3. **Smaller prefix.** Briefs are ~1–2 k characters instead of the snow-cli prompts; the engines' own prompts stay (they were being replaced anyway, but the tool definitions dominate and are cached).
+  4. **Session cap.** Every engine now reports the size of its last prompt (`contextTokens`; for Codex estimated as turn input ÷ requests). Past `loop.sessionCapK` (100 k) the executor restarts at the next round with a handover note (instructions are self-contained by design), and the lead continues from `recapPrompt`. This bounds the per-request cost on long tasks, where the old sessions grew to 150 k+.
+  5. Cache hit rate of both roles is shown in the task's plan popover and in `onei`.
+- Measured after the changes (tiny goal, real engines): Claude lead + GPT exec 53 s; GPT lead + WorkBuddy exec 42 s, executor cache 72 %, lead 73 % (first calls write the cache); lead off with WorkBuddy 13 s, no lead calls.
+
+### Design decisions this round
+
+- **pi, taken**: minimal prompts that trust the model; keep the harness the vendor tuned (Claude Code / Codex / CodeBuddy prompts and tools) and only append what is particular to this loop; no date in prompts (cache); project context comes from the engines' own AGENTS.md/CLAUDE.md loading. **Left out**: pi's own agent runtime and provider layer (we drive the vendors' CLIs, which keep subscription logins), its extension system, and its "no permission system" stance (the lead stays sandboxed, the gate stays).
+- **Prompt modes**: built-in briefs are appended (Claude/WorkBuddy `--append-system-prompt`, Codex `-c developer_instructions=…`, DeepSeek persona suffix). A custom prompt or an override ROLE.md still replaces the engine prompt (`--system-prompt-file`, `model_instructions_file`).
+- **Lead off** keeps the round structure (snapshots, diff, check, rollback) and only removes the lead's turns. The goal is sent verbatim; the executor brief says it works alone and must check its own work. Turning the lead on mid-task starts its thread from a recap.
+- **Chibis are original art** generated with Codex's image tool (`codex exec` + its image tool, the PNG copied into the working dir), not fan art from the web: fan art belongs to its artists and this repo is public. Community references followed: DeepSeek's whale girl (blue hair, whale tail, navy maid dress, loves white rice), Claude's orange young lady (the user's description), GPT a monochrome scholar with a knot hairpin, WorkBuddy's mint cat mascot with a screen face.
+- **CLI design**: one scrolling transcript (scrollback stays usable) instead of a full-screen TUI; three voices with a glyph each (› you, ◇ lead, ◆ executor); the lead's verdict, plan checklist and hand-off; the executor's tools as dim one-liners and its report; one status line (spinner, who/what, elapsed, tokens, cache) above the input. The CLI is only a client of the task files, so tasks survive leaving. Enter = message for the next step, Esc = interrupt with the typed text, ctrl+c twice = leave. No dependencies (readline + ANSI); width-aware for CJK. `/lead` and `/exec` save the defaults (like the app's settings); `/mode`, `/team`, `/check` apply to the next task only.
+
+### Open items / next steps (this round)
+
+- Codex calls use `~/.codex` unless Accounts → Advanced sets a Codex home, so the user's personal `~/.codex/AGENTS.md` (a 120-line routing policy, in Chinese) is loaded into every GPT turn; that is why GPT answers in Chinese to English goals. Other engines use their own homes. An isolated Codex home would need its own `codex login`.
+- `onei` is English only; i18n can reuse the locale files later. A `--print` (non-interactive) mode is `wbloop run`.
+- DeepSeek still has not run a real task (the user has not clicked its sign-in yet).
+- The session cap for Codex uses an estimate (turn input ÷ requests); Codex also auto-compacts on its own.
+
+## Earlier round (2026-10-25)
 
 Windows release 0.4.2 (0.4.1 was the initial source tag):
 

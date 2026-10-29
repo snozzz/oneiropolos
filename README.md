@@ -109,7 +109,7 @@ When a login expires mid-task the task pauses with an **Accounts** button; sign 
 
 ## Using it
 
-Tasks are on the left (pinned ones first, then running ones), the conversation on the right. **Your messages and the lead's are on the right, the executor's on the left**: you state a goal → the lead plans and hands over an instruction → the executor works and reports → the lead audits and gives the next step… Each role has an emblem: Daedalus's compass is the lead, Hephaestus's hammer is the executor, the crescent is you, Themis's scales are the independent reviewer.
+Tasks are on the left (pinned ones first, then running ones), the conversation on the right. **Your messages and the lead's are on the right, the executor's on the left**: you state a goal → the lead plans and hands over an instruction → the executor works and reports → the lead audits and gives the next step… Each role has an emblem: Daedalus's compass is the lead, the crescent is you, Themis's scales are the independent reviewer. The executor shows the face of its engine: DeepSeek's whale girl, Claude's orange-haired young lady, GPT's black-and-white scholar, WorkBuddy's mint cat-eared buddy (original art in `public/chibi`); it breathes gently while it works.
 
 Right-click a task in the sidebar for **Pin**, **Rename**, **Open in Finder**, **Export**, Pause / Stop / Continue and **Delete**.
 
@@ -119,6 +119,7 @@ Right-click a task in the sidebar for **Pin**, **Rename**, **Open in Finder**, *
    - **Working directory** (the folder button) — a dedicated project folder, ideally a git repository. It lists your recent folders; "Choose another folder…" opens the folder picker.
    - **Models & parameters** (the model names on the right) — for the lead and for the executor: the **engine** (GPT, Claude, DeepSeek, WorkBuddy), model and reasoning effort; WorkBuddy's context window, GPT web search, extra folders for the executor, Team Mode and its size, task mode, reply language, maximum rounds, token budget, **check command**, autonomy, independent review and the sensitive-command policy.
    - **+** — templates and three options. An option changed from its default shows as a chip above the buttons: click the chip to change it, or its × to go back to the default.
+     - **Lead** — On, or **Off**: the executor works on your goal alone, quicker and cheaper for small, clear tasks. A failing check command sends it back to fix; a later message becomes another round. (Plan first, Team Mode and the review need a lead.)
      - **Team Mode** — Solo, Auto (GPT may split a round among teammates) or Always.
      - **Task mode** — Normal, **Plan first** (nothing changes until you approve GPT's plan) or **Vulnerability hunting** (a security review of code you own: each finding verified with a minimal proof and reported with a fix).
      - **Start** — now, tonight at 23:00, late night, morning, any time; when the chosen WorkBuddy model has a night discount there is also "when the discount starts". Until then the task just waits (the Mac doesn't idle-sleep), and "Start now" is always available.
@@ -131,6 +132,7 @@ Notes on the parameters:
 - **WorkBuddy model data** matches the desktop app: credit multipliers, "night discount" and other tags, context-window steps and reasoning levels all come from WorkBuddy's live server config (refreshed at launch when older than 2 hours, or with "Refresh" in the parameters — no model call, no credits).
 - **Maximum rounds** and **token budget** (millions of tokens, GPT + WorkBuddy): when either is reached, GPT first writes a **wrap-up** (what is done, what is left, what the next instruction would be), then the task pauses; raise the limit and click Continue.
 - **Autonomy** defaults to "GPT decides on its own", for unattended runs; with "Ask me about important decisions" GPT may pause and notify you.
+- **Fresh session above** (default 100k tokens): every model request re-sends the whole session, so a session that grew past this restarts at the next round — the executor with a handover note, the lead from a recap. 0 = never.
 - **Independent review** is on by default: once GPT says done, a fresh session that doesn't know the history checks again, and anything it finds gets fixed.
 
 ### While a task runs
@@ -195,6 +197,39 @@ On the home page: `/dir` `/params` `/template` `/team` `/mode` `/init` `/deepres
 
 Eleven pages: **General** (language, theme, process detail), **Accounts** (sign-in for every engine), **Defaults** (parameters for new tasks, saved profiles), **Prompts** (each role built-in or custom, standing rules for GPT and for WorkBuddy, ROLE.md), **Sub-agents**, **Safety** (policy, timeout, rules), **Hooks**, **Skills & commands**, **MCP**, **Long runs** (steps per call, continuations, idle timeout, waiting on limits, check timeout, auto-compact) and **System & data** (notifications, sleep prevention, notebook, cleanup, usage, loops, export/import of settings).
 
+## Terminal: `onei`
+
+An interactive terminal for the same tasks (English for now). In a project folder:
+
+```bash
+onei                 # or: node bin/onei.js — type a goal at the prompt
+onei "Add a --json flag to export"
+```
+
+```
+› Add a --json flag to export
+
+◇ Claude · plan
+  continue · 20%
+  The export command lives in src/cli/export.ts; one round should do.
+  ◆ Add the flag   ○ JSON writer   ○ Tests
+  → DeepSeek
+  │ Add a --json flag to `export` in src/cli/export.ts …
+
+◆ DeepSeek · round 1
+  ⎿ Read   src/cli/export.ts
+  ⎿ Edit   src/cli/export.ts
+  ⎿ Bash   npm test
+  …its report…
+  6 tools · 1:12 · 48k in · cache 96%
+  2 files changed +38 −4
+
+⠹ Claude auditing · $ npm test · round 1 · 2:40 · 112k tok · cache 94%
+› Message the lead…
+```
+
+You (›), the lead (◇) and the executor (◆) share one transcript; a status line shows who is working and the tokens used. **Enter** sends a message for the next step, **Esc** interrupts the current step with what you typed, **ctrl+c** twice leaves. Tasks run in the background, so leaving never stops one: `onei` in the same folder follows it again, `/open` replays the last one. Commands (Tab completes): `/lead` and `/exec` (engine, model, effort; `/lead off`), `/mode`, `/team`, `/check`, `/pause` `/resume` `/stop`, `/approve` `/allow` `/deny`, `/tasks` `/open` `/new`, `/status` `/login` `/usage`, `/verbose`, `/help`.
+
 ## Command line
 
 ```bash
@@ -210,6 +245,13 @@ node bin/wbloop.js quota | usage 7d | agents | prompt executor
 ```
 
 Also: `wbloop list / show / tail / msg / pause / stop / resume / compact / export <ID|last>`, `wbloop config key=value`. In a foreground run, type to leave a message; `/cut …`, `/approve`, `/allow`, `/deny`, `/compact`, `/pause`, `/resume`, `/stop` work there too.
+
+## Prompts and tokens
+
+- Every engine keeps its **own system prompt** (Claude Code's, Codex's, CodeBuddy's, DeepSeek Harness's), tuned by its vendor for that model and its tools. The app only appends a short role brief (20–40 lines: who you are in the loop, what you may change, how to report) — an idea taken from [pi](https://github.com/earendil-works/pi): say little and let the model work. A custom prompt under Settings → Prompts still replaces the engine's prompt.
+- The briefs hold no date or other per-call text, so the start of every request stays the same for the whole task and is read from the provider's **prompt cache** (Claude Code keeps it for an hour). Each round resumes the same sessions, so earlier context is cached too.
+- The task's plan popover and `onei` show the **cache hit rate** of both roles. Usage is counted per model request. (Before 0.5 WorkBuddy calls were counted as the whole session plus the cache again, which inflated older usage records many times over.)
+- Past **Fresh session above** a session restarts from a summary, which keeps each request small on long tasks.
 
 ## Built for long runs
 
