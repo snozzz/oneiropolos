@@ -12,4 +12,6 @@ test('tui text: width, fit and wrap', () => {
   assert.deepEqual(wrap('the quick brown fox jumps', 10), ['the quick', 'brown fox', 'jumps']);
   assert.ok(wrap('写一个很长的目标文件写一个很长的目标文件', 10).every((l) => width(l) <= 10));
   assert.deepEqual(wrap('a\n\nb', 10), ['a', '', 'b']);
+  const cjk = wrap('使用 Python 标准库 unittest 覆盖至少整数加法并确保测试文件可直接运行', 20);
+  assert.ok(cjk.slice(0, -1).every((l) => width(l) >= 18), `CJK lines are filled: ${JSON.stringify(cjk)}`);
 });

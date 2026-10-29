@@ -86,7 +86,9 @@ export function wrap(text, cols) {
         w = 0;
         continue;
       }
-      if (tw <= cols && line.trim()) {
+      // a CJK run has no spaces to break at: it fills the line character by character
+      const wide = [...token].some((ch) => isWide(ch.codePointAt(0)));
+      if (!wide && tw <= cols && line.trim()) {
         lines.push(line.trimEnd());
         line = token;
         w = tw;
