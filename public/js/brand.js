@@ -169,9 +169,9 @@ export const ICON = {
   user: svg('<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-3.8 3.4-6 7-6s6.4 2.2 7 6"/>'),
 };
 
-// ---------- role emblems: Athena's owl (GPT), Hephaestus' hammer (WorkBuddy), the crescent (you), Themis' scales (reviewer) ----------
+// ---------- role emblems: Daedalus' compass (the lead), Hephaestus' hammer (the executor), the crescent (you), Themis' scales (reviewer) ----------
 export const EMBLEM = {
-  gpt: svg('<path d="M5.3 4.4 8 7.2h8l2.7-2.8v9.1a6.7 6.7 0 0 1-13.4 0z"/><circle cx="9.3" cy="11.3" r="2.45"/><circle cx="14.7" cy="11.3" r="2.45"/><circle cx="9.3" cy="11.3" r=".95" fill="currentColor" stroke="none"/><circle cx="14.7" cy="11.3" r=".95" fill="currentColor" stroke="none"/><path d="M11.3 14.2 12 15.5l.7-1.3"/><path d="M8.5 21.4h7"/>', { sw: 1.45 }),
+  gpt: svg('<circle cx="12" cy="4.6" r="1.7"/><path d="M11.2 6.2 6 20.5M12.8 6.2 18 20.5"/><path d="M7.6 15.2c2.9 1.6 5.9 1.6 8.8 0"/>', { sw: 1.5 }),
   wb: svg('<path d="M13.2 3 21 10.8 17.8 14 10 6.2z"/><path d="M15.6 8.4l-1.6-1.6"/><path d="M13.9 10.1 4.3 19.7"/>', { sw: 1.5 }),
   user: svg('<path d="M15.6 4A8.3 8.3 0 1 0 20.1 15.6 6.8 6.8 0 0 1 15.6 4z"/><path d="M18.8 4.2v2.4M17.6 5.4H20"/>', { sw: 1.45 }),
   rev: svg('<path d="M12 4.8V20.2M8.6 20.2h6.8M5.2 7.4h13.6"/><path d="M5.2 7.4 2.9 12.8M5.2 7.4l2.3 5.4M2.6 12.8a2.6 2.6 0 0 0 5.2 0z"/><path d="M18.8 7.4l-2.3 5.4M18.8 7.4l2.3 5.4M16.2 12.8a2.6 2.6 0 0 0 5.2 0z"/><circle cx="12" cy="4.2" r=".9" fill="currentColor"/>', { sw: 1.35 }),

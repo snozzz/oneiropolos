@@ -109,7 +109,7 @@ When a login expires mid-task the task pauses with an **Accounts** button; sign 
 
 ## Using it
 
-Tasks are on the left (pinned ones first, then running ones), the conversation on the right. **Your messages and the lead's are on the right, the executor's on the left**: you state a goal → the lead plans and hands over an instruction → the executor works and reports → the lead audits and gives the next step… Each role has an emblem: Athena's owl is the lead, Hephaestus's hammer is the executor, the crescent is you, Themis's scales are the independent reviewer.
+Tasks are on the left (pinned ones first, then running ones), the conversation on the right. **Your messages and the lead's are on the right, the executor's on the left**: you state a goal → the lead plans and hands over an instruction → the executor works and reports → the lead audits and gives the next step… Each role has an emblem: Daedalus's compass is the lead, Hephaestus's hammer is the executor, the crescent is you, Themis's scales are the independent reviewer.
 
 Right-click a task in the sidebar for **Pin**, **Rename**, **Open in Finder**, **Export**, Pause / Stop / Continue and **Delete**.
 
