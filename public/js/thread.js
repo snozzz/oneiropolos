@@ -3,8 +3,8 @@ import {
   $, $$, ACTIVE, TOKEN, actions, api, app, collapsible, copyText, el, esc, firstLine, fixCollapsibles, fmtClock, fmtCtx, fmtDuration,
   fmtTime, fmtTokens, md, mdInline, msgText, oneLine, shortPath, tEffort, tPhase, tSeverity, tStatus, tVerdict, toast,
 } from './core.js';
-import { DONE_VERSE, EMBLEM, ICON, LAUREL } from './brand.js';
-import { ENGINE_NAMES, modelName, roleLabel, roleSpec, useRoleNames } from './engines.js';
+import { DONE_VERSE, EMBLEM, ICON, LAUREL, chibiFace } from './brand.js';
+import { ENGINE_NAMES, engineOf, modelName, roleLabel, roleSpec, useRoleNames } from './engines.js';
 import { autosize, enhanceComposer } from './composer.js';
 import { setRoleNames, t } from './i18n.js';
 import { TASK_MODES, TEAM_MODES, mountSettingsForm, readSettingsForm, wbEffortText, wbModel } from './forms.js';
@@ -361,6 +361,13 @@ function copyLast() {
 
 // ---------- the conversation ----------
 const appendThread = (node) => $('#timeline').appendChild(node);
+/** The task's executor engine; while history replays before the state arrives, the task list knows its name. */
+function execEngine() {
+  if (app.state?.settings) return engineOf(app.state.settings, 'executor');
+  const name = (app.runs || []).find((r) => r.id === app.currentId)?.names?.exec;
+  return Object.keys(ENGINE_NAMES).find((k) => ENGINE_NAMES[k] === name) || 'workbuddy';
+}
+
 const emb = (kind) => `<span class="emb ${kind}">${EMBLEM[kind]}</span>`;
 
 function ensureGoalBubble() {
@@ -447,7 +454,7 @@ function renderGptResult(c, out, meta) {
       <div class="assign-list">${out.team.map((m, i) => `<div class="assign"><div class="assign-head"><b>${esc(m.name)}</b>${m.role ? `<span class="muted">${esc(m.role)}</span>` : ''}${m.owns ? `<span class="owns mono" title="${esc(t('run.owns'))}">${esc(oneLine(m.owns, 80))}</span>` : ''}</div>${collapsible(md(m.instruction), `${key}-t${i}`)}</div>`).join('')}</div></div>`;
   } else if (out.verdict === 'continue' && out.next_instruction) {
     const label = c.label.startsWith('wrapup-') ? t('run.toWbAfterLimit') : c.label === 'plan' && app.state?.settings?.agents?.mode === 'plan' ? t('run.toWbAfterApproval') : t('run.toWb');
-    html += `<div class="handoff"><div class="handoff-label">${emb('wb')}${esc(label)}</div><div class="handoff-body">${collapsible(md(out.next_instruction), `${key}-i`)}</div></div>`;
+    html += `<div class="handoff"><div class="handoff-label">${chibiFace(execEngine())}${esc(label)}</div><div class="handoff-body">${collapsible(md(out.next_instruction), `${key}-i`)}</div></div>`;
   }
   $('.g-body', c.node).innerHTML = html;
   $('.g-verdict', c.node).innerHTML = `<span class="verdict ${esc(out.verdict)}">${esc(tVerdict(out.verdict))}</span>`;
@@ -482,7 +489,7 @@ function ensureWbCard(n) {
   if (app.t.wb.has(`${n}`)) return app.t.wb.get(`${n}`);
   const node = appendThread(el(`
     <div class="msg wb" id="wb-${n}">
-      <div class="msg-head">${emb('wb')}<span class="who">${esc(t('who.wb'))}</span><span class="what">${esc(t('round.n', { n }))}</span><span class="meta w-meta"></span><span class="spacer"></span><button class="btn ghost xs act" type="button" data-prompt="wb-${n}">${esc(t('run.instructionReceived'))}</button></div>
+      <div class="msg-head">${chibiFace(execEngine())}<span class="who">${esc(t('who.wb'))}</span><span class="what">${esc(t('round.n', { n }))}</span><span class="meta w-meta"></span><span class="spacer"></span><button class="btn ghost xs act" type="button" data-prompt="wb-${n}">${esc(t('run.instructionReceived'))}</button></div>
       <div class="wb-body">${WB_INNER()}
         <div class="round-foot hidden"></div>
         <div class="checkline hidden"></div>
@@ -860,7 +867,12 @@ function handleEvent(ev) {
       break;
     case 'wb.start': {
       const c = wbFor(ev);
-      if (ev.engine && !ev.member) $('.msg-head .who', c.node).textContent = ENGINE_NAMES[ev.engine] || ev.engine;
+      if (ev.engine && !ev.member) {
+        $('.msg-head .who', c.node).textContent = ENGINE_NAMES[ev.engine] || ev.engine;
+        const av = $('.msg-head .avatar', c.node);
+        if (av && av.dataset.engine !== ev.engine) av.outerHTML = chibiFace(ev.engine);
+      }
+      (ev.member ? c.node : c.node.closest('.msg.wb') || c.node).classList.add('live');
       const pkey = ev.member ? `wb-${ev.round}-${ev.member}` : `wb-${ev.round}`;
       // "instruction received" keeps the first full instruction of the round (continuations are short notes)
       if (!ev.continuation || !app.t.prompts.has(pkey)) app.t.prompts.set(pkey, ev.prompt);
@@ -914,6 +926,7 @@ function handleEvent(ev) {
     }
     case 'wb.end': {
       const c = wbFor(ev);
+      (ev.member ? c.node : c.node.closest('.msg.wb') || c.node).classList.remove('live');
       c.liveNode?.remove();
       c.liveNode = null;
       c.liveLabel = '';
@@ -1023,6 +1036,8 @@ function handleEvent(ev) {
       sysLine(t('run.askLine'), 'warn', ev.t);
       break;
     case 'run.status':
+      // a stopped or paused task has nobody working: the executor's face stops breathing
+      if (ev.status !== 'running') document.querySelectorAll('#timeline .msg.wb.live').forEach((n) => n.classList.remove('live'));
       if (['paused', 'stopped', 'failed'].includes(ev.status) && (ev.message || ev.key)) sysLine(`${tStatus(ev.status)}: ${msgText(ev)}`, ev.status === 'failed' ? 'err' : 'warn', ev.t);
       break;
     case 'done': {

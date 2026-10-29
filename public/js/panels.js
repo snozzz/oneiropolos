@@ -1,6 +1,6 @@
 // Panels in dialogs: settings, accounts and quota, changes, rollback, help.
 import { $, $$, ACTIVE, actions, api, app, applyTheme, armButton, esc, fmtClock, fmtDuration, fmtRelative, fmtTime, native, oneLine, toast } from './core.js';
-import { BRAND, EMBLEM, ICON } from './brand.js';
+import { BRAND, EMBLEM, ICON, chibiFace } from './brand.js';
 import { LANGS, lang, t } from './i18n.js';
 import { ENGINE_IDS, ENGINE_VENDORS, engineOf, engineStatus } from './engines.js';
 import { REPLY_LANGS, SAFETY_POLICIES, bindSeg, formGroup, formRow, gptModelList, mountSettingsForm, numberControl, readSettingsForm, seg, segValue, switchControl } from './forms.js';
@@ -599,7 +599,7 @@ function acctCard(id, flow) {
     extra += `<details class="ac-key"><summary>${esc(t('acct.useKey'))}</summary><div class="inline-add"><input type="password" id="ac-ds-key" placeholder="sk-…" autocomplete="off" spellcheck="false"><button class="btn sm" type="button" data-ac-key>${esc(t('common.save'))}</button></div></details>`;
   }
   return `<div class="acct-card${st.loggedIn ? ' on' : ''}" data-engine="${id}">
-    <span class="dot"></span>
+    <span class="ac-av">${chibiFace(id)}<span class="dot"></span></span>
     <div class="ac-main"><div class="ac-name">${esc(ENGINE_VENDORS[id])}${roles.map((r) => `<span class="ac-role">${esc(r)}</span>`).join('')}</div><div class="ac-sub">${sub}</div></div>
     <div class="ac-actions">${action}</div>
     ${extra ? `<div class="ac-extra">${extra}</div>` : ''}

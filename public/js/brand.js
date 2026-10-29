@@ -177,6 +177,15 @@ export const EMBLEM = {
   rev: svg('<path d="M12 4.8V20.2M8.6 20.2h6.8M5.2 7.4h13.6"/><path d="M5.2 7.4 2.9 12.8M5.2 7.4l2.3 5.4M2.6 12.8a2.6 2.6 0 0 0 5.2 0z"/><path d="M18.8 7.4l-2.3 5.4M18.8 7.4l2.3 5.4M16.2 12.8a2.6 2.6 0 0 0 5.2 0z"/><circle cx="12" cy="4.2" r=".9" fill="currentColor"/>', { sw: 1.35 }),
 };
 
+// the executors' chibi faces (public/chibi, original art): the whale girl (DeepSeek), the orange young lady (Claude),
+// the black-and-white scholar (GPT), the mint cat-eared buddy (WorkBuddy)
+const CHIBI = new Set(['chatgpt', 'claude', 'deepseek', 'workbuddy']);
+
+export function chibiFace(engineId, cls = '') {
+  const id = CHIBI.has(engineId) ? engineId : 'workbuddy';
+  return `<span class="avatar ${id}${cls ? ` ${cls}` : ''}" data-engine="${id}"><img src="/chibi/${id}-face.png" alt="" draggable="false"></span>`;
+}
+
 // template icons: a temple for new projects, Zeus' thunderbolt for performance, a shield for tests, Argus' eye for reviews
 export const TEMPLATE_ICON = {
   feature: svg('<path d="M12 3.5 13.8 10 20.5 12l-6.7 2L12 20.5 10.2 14 3.5 12l6.7-2z"/>', { sw: 1.4 }),
