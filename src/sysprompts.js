@@ -144,15 +144,18 @@ function vulnLeadSection() {
 - Source stays unchanged unless the goal asks for fixes. "done" only when each finding was verified (or marked unverified with reasons).`;
 }
 
-function executorIdentity(names = DEFAULT_NAMES) {
-  return `# Oneiropolos · Executor
+function executorIdentity(names = DEFAULT_NAMES, solo = false) {
+  return solo
+    ? `# Oneiropolos · Executor
+You work alone on the user's task while they are away; nobody reviews your work in between, so check it yourself.`
+    : `# Oneiropolos · Executor
 You are the Executor of an unattended coding loop. A Lead (${names.lead}) sends you one instruction per round and checks your work afterwards.`;
 }
 
 export function executorSystemPrompt(ctx) {
   const { settings = {}, subagents, skills, notebookPath, extraDirs, mode = 'normal', names = DEFAULT_NAMES, gate = true } = ctx;
   const dirs = extraDirs?.length ? ` and ${extraDirs.map((d) => `\`${d}\``).join(', ')}` : '';
-  return `${executorIdentity(names)}
+  return `${executorIdentity(names, ctx.solo)}
 
 Nobody can answer questions while you work. When something is unclear, take the conventional choice and say so in the report.
 
@@ -292,7 +295,7 @@ export function buildSystemPrompt(role, ctx) {
   } else {
     text = BUILDERS[role](ctx);
     if (roleFile) {
-      const identity = executorIdentity(ctx.names);
+      const identity = executorIdentity(ctx.names, ctx.solo);
       text = text.replace(identity, () => `${identity}\n\nRules from the user (ROLE.md), to be followed exactly:\n${roleFile.text}`);
       source = 'builtin+role';
     }

@@ -158,7 +158,7 @@ export function renderHeader() {
         const d = fmtDuration(isScheduled(s) ? Date.parse(s.scheduledAt) - Date.now() : elapsed);
         return d ? `<span>${esc(isScheduled(s) ? t('run.startsIn', { d }) : t('run.elapsed', { d }))}</span>` : '';
       })()}
-      ${['lead', 'executor'].map((role) => {
+      ${(set.loop?.useLead === false ? ['executor'] : ['lead', 'executor']).map((role) => {
         const sp = roleSpec(set, role);
         const name = sp.engine === 'workbuddy' ? wbModel(sp.model || 'auto').name : modelName(sp.engine, sp.model);
         const extra = sp.engine === 'workbuddy' ? `${wbEffortText({ effort: sp.effort })}${wbSet.contextWindow ? ` · ${fmtCtx(wbSet.contextWindow)}` : ''}` : sp.effort ? tEffort(sp.effort) : '';

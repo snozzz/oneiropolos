@@ -307,6 +307,11 @@ export class Orchestrator {
 
   // ---------- everything the system prompts and WorkBuddy calls need ----------
 
+  /** No lead: the executor works on the goal directly. */
+  get solo() {
+    return this.cfg.loop?.useLead === false;
+  }
+
   get mode() {
     const m = this.cfg.agents?.mode;
     return m === 'plan' || m === 'vuln' ? m : 'normal';
@@ -342,7 +347,7 @@ export class Orchestrator {
     }
     const names = roleNames(this.cfg);
     const execEngine = engineOf(this.cfg, 'executor');
-    return { settings: this.cfg, workdir: s.workdir, sandbox: this.sandbox, subagents: engine(execEngine).meta.agents ? subagents : [], skills, notebookPath, extraDirs: this.extraDirs(), mode: this.mode, team: this.teamCfg, names, execEngine, gate: engine(execEngine).meta.gate, ...extra };
+    return { settings: this.cfg, solo: this.solo, workdir: s.workdir, sandbox: this.sandbox, subagents: engine(execEngine).meta.agents ? subagents : [], skills, notebookPath, extraDirs: this.extraDirs(), mode: this.mode, team: this.teamCfg, names, execEngine, gate: engine(execEngine).meta.gate, ...extra };
   }
 
   /** Writes the system prompt of a role to a file in the run directory (Codex and WorkBuddy both read it from there). */
@@ -562,12 +567,12 @@ export class Orchestrator {
         continue;
       }
       try {
-        if (phase === 'plan') await this.doPlan();
-        else if (phase === 'approve') await this.doApprove();
+        if (phase === 'plan') await (this.solo ? this.doSoloStart() : this.doPlan());
+        else if (phase === 'approve') await (this.solo ? this.doSoloApprove() : this.doApprove());
         else if (phase === 'work') await this.doWork();
-        else if (phase === 'audit') await this.doAudit();
-        else if (phase === 'followup') await this.doFollowup();
-        else if (phase === 'review') await this.doReview();
+        else if (phase === 'audit') await (this.solo ? this.doSoloAfter() : this.doAudit());
+        else if (phase === 'followup') await (this.solo ? this.doSoloFollowup() : this.doFollowup());
+        else if (phase === 'review') await (this.solo ? this.doSoloAfter() : this.doReview());
         else if (phase === 'ask') await this.doAsk();
         else throw new Error(`unknown phase: ${phase}`);
       } catch (err) {
@@ -807,6 +812,11 @@ export class Orchestrator {
         }
       }
       s.gpt.engine = spec.engine;
+      // the lead joins a task that already has rounds (it was off until now): start its thread from a recap
+      if (threadKey === 'threadId' && !s.gpt.threadId && !rebuilt && s.rounds.length) {
+        rebuilt = true;
+        base = `${P.recapPrompt({ goal: s.goal, workdir: s.workdir, maxRounds: this.cfg.loop.maxRounds, plan: s.plan, lastAudit: s.lastAudit, rounds: s.rounds, checkCommand: this.cfg.loop.checkCommand, team: this.teamCfg, mode: this.mode })}\n\n---\n\n${prompt}`;
+      }
       // a long lead thread re-sends all of itself with every request: past the cap, continue from a recap instead
       const cap = this.sessionCapTokens();
       if (threadKey === 'threadId' && s.gpt.threadId && !rebuilt && cap && (s.gpt.contextTokens || 0) > cap) {
@@ -1084,13 +1094,13 @@ export class Orchestrator {
     const rec = this.roundRec(round);
     if (!rec) throw new Error(`missing record of round ${round}`);
     if (round > lc.maxRounds) {
-      if (!rec.wrapUp) await this.doWrapUp(rec, 'rounds');
+      if (!rec.wrapUp && !this.solo) await this.doWrapUp(rec, 'rounds');
       if (s.phase !== 'work') return;
       throw new PauseSignal('srv.pause.maxRounds', { n: lc.maxRounds });
     }
     const budget = Number(lc.tokenBudgetM) || 0;
     if (budget > 0 && !rec.startedAt && this.tokensUsedM() >= budget) {
-      if (!rec.wrapUp || rec.wrapUp.reason !== 'budget' || rec.wrapUp.budget !== budget) {
+      if (!this.solo && (!rec.wrapUp || rec.wrapUp.reason !== 'budget' || rec.wrapUp.budget !== budget)) {
         await this.doWrapUp(rec, 'budget');
         if (rec.wrapUp) rec.wrapUp.budget = budget;
       }
@@ -1220,7 +1230,7 @@ export class Orchestrator {
     const first = await this.beforeAgentHooks({
       agentId: 'workbuddy',
       agentName: 'WorkBuddy',
-      prompt: P.workerPrompt({ round, instruction: rec.instruction, workdir: s.workdir, handoff: s.wb.sessionStarted ? null : s.wb.handoff }),
+      prompt: P.workerPrompt({ round, instruction: rec.instruction, workdir: s.workdir, handoff: s.wb.sessionStarted ? null : s.wb.handoff, source: rec.source }),
       cwd: s.workdir,
       round,
     });
@@ -1318,7 +1328,7 @@ export class Orchestrator {
       // a session belongs to one engine: after a switch, start fresh with a handover note
       if (slot.engine && slot.engine !== spec.engine) {
         await this.rotateSession(slot, 'srv.reason.engineChanged');
-        prompt = member ? firstPrompt : P.workerPrompt({ round, instruction, workdir: s.workdir, handoff: slot.handoff });
+        prompt = member ? firstPrompt : P.workerPrompt({ round, instruction, workdir: s.workdir, handoff: slot.handoff, source: rec.source });
       }
       slot.engine = spec.engine;
       setInFlight(true);
@@ -1420,7 +1430,7 @@ export class Orchestrator {
       if (!rotated && (kind === 'context' || (slot.sessionStarted && LOST_WB_SESSION_RE.test(errText)))) {
         rotated = true;
         await this.rotateSession(slot, kind === 'context' ? 'srv.reason.context' : 'srv.reason.lostSession');
-        prompt = member ? firstPrompt : P.workerPrompt({ round, instruction, workdir: s.workdir, handoff: slot.handoff });
+        prompt = member ? firstPrompt : P.workerPrompt({ round, instruction, workdir: s.workdir, handoff: slot.handoff, source: rec.source });
         continue;
       }
       if (kind === 'limit') {
@@ -1670,6 +1680,70 @@ export class Orchestrator {
       this.applyOutput(out, { keepPlan: true });
       this.routeVerdict(out, 'review');
     }
+  }
+
+  // ---------- no lead: the executor works on the goal directly ----------
+
+  /** The first round is the goal itself (plus anything the user added before it started). */
+  async doSoloStart() {
+    const s = this.state;
+    const extra = s.userMessages.filter((m) => !m.system);
+    s.userMessages = [];
+    const hook = this.takeHookContext();
+    const text = [s.goal, ...extra.map((m) => m.text), hook ? `Context from the user's hooks:\n${hook}` : ''].filter(Boolean).join('\n\n');
+    this.newRound({ next_instruction: text, team: [] }, 'user');
+    s.phase = 'work';
+    this.save();
+  }
+
+  /** Plan Mode needs a lead; without one the pending round simply starts. */
+  async doSoloApprove() {
+    this.state.phase = 'work';
+    this.save();
+  }
+
+  /** After a round: new messages → another round; a failing check → back to the executor; otherwise finished. */
+  async doSoloAfter() {
+    const s = this.state;
+    const rec = this.roundRec(s.round);
+    if (rec) rec.endedAt = rec.endedAt || nowIso();
+    if (s.userMessages.some((m) => !m.system)) {
+      s.phase = 'followup';
+      this.save();
+      return;
+    }
+    if (rec?.check && !rec.check.ok) {
+      const check = readJson(path.join(this.ensureRoundDir(rec.round), 'check.json'), rec.check);
+      this.newRound({ next_instruction: P.soloFixPrompt({ ...check, output: truncateMiddle(check.output || '', 6000) }), team: [] }, 'check');
+      s.phase = 'work';
+      this.save();
+      return;
+    }
+    const w = rec?.worker || {};
+    const report = String(w.resultText || (w.lastTexts || []).join('\n') || '').split('\n').filter((l) => l.trim() && !/^#{1,6}\s/.test(l)).join(' ');
+    if (w.ok || w.interrupted) {
+      s.lastAudit = { verdict: 'done', assessment: truncate(report, 600) || t('srv.goalDone'), plan: s.plan || [], issues: [], next_instruction: '', team: [], progress: 100, question_for_user: '' };
+    } else {
+      s.abortReason = oneLine((w.errors || []).join('; '), 300) || t('srv.abortDefault');
+    }
+    s.phase = 'finish';
+    this.save();
+  }
+
+  /** Messages from the user become the next round, word for word. */
+  async doSoloFollowup() {
+    const s = this.state;
+    const msgs = s.userMessages.filter((m) => !m.system);
+    s.userMessages = [];
+    if (!msgs.length) {
+      s.phase = 'finish';
+      this.save();
+      return;
+    }
+    s.abortReason = null;
+    this.newRound({ next_instruction: P.soloMessagesPrompt(msgs), team: [] }, 'user');
+    s.phase = 'work';
+    this.save();
   }
 
   async doAsk() {

@@ -109,6 +109,7 @@ function roleGroup(role, p, st, opts) {
   const spec = roleSpec(st, role);
   const perm = st.workbuddy?.permissionMode === 'fullAccess' ? 'fullAccess' : 'bypassPermissions';
   const rows = [
+    ...(role === 'lead' ? [formRow(t('form.useLead'), switchControl(`${p}-uselead`, st.loop?.useLead !== false, t('form.useLeadSwitch')), { hint: t('form.useLeadHint') })] : []),
     formRow(t('form.engine'), engineSeg(`${p}-${r}-engine`, spec.engine), { hintKey: `${r}-engine` }),
     formRow(t('form.model'), `<select id="${p}-${r}-model">${modelOptions(spec.engine, spec.model)}</select>`, { forId: `${p}-${r}-model`, hintKey: `${r}-model` }),
     formRow(t('form.reasoning'), `<select id="${p}-${r}-effort"></select>`, { forId: `${p}-${r}-effort`, hintKey: `${r}-effort` }),
@@ -263,6 +264,7 @@ export function readSettingsForm(root, p) {
     agents: { mode: v('mode').value, replyLanguage: v('reply').value },
     loop: {
       maxRounds: Math.max(1, Math.min(500, Math.round(Number(v('rounds').value)) || 30)),
+      useLead: v('uselead').checked,
       tokenBudgetM: Math.max(0, Number(v('budget').value) || 0),
       sessionCapK: Math.max(0, Math.round(Number(v('cap').value)) || 0),
       finalReview: v('review').checked,
@@ -305,7 +307,7 @@ export function settingsSummary(st) {
   const lead = roleSpec(st, 'lead');
   const exec = roleSpec(st, 'executor');
   const desc = (s) => `${s.name} ${modelName(s.engine, s.model)}${s.effort ? ` · ${tEffort(s.effort)}` : ''}`;
-  const parts = [`${t('role.short.lead')}: ${desc(lead)}`, `${t('role.short.executor')}: ${desc(exec)}`];
+  const parts = st.loop?.useLead === false ? [`${t('role.short.executor')}: ${desc(exec)}`, t('home.chipSolo')] : [`${t('role.short.lead')}: ${desc(lead)}`, `${t('role.short.executor')}: ${desc(exec)}`];
   if (st.team?.mode && st.team.mode !== 'off') parts.push(`${t('form.team')}: ${TEAM_MODES().find(([v]) => v === st.team.mode)?.[1]}`);
   if (st.agents?.mode && st.agents.mode !== 'normal') parts.push(TASK_MODES().find(([v]) => v === st.agents.mode)?.[1]);
   if (st.loop?.checkCommand) parts.push(`${t('form.check')}: ${st.loop.checkCommand}`);

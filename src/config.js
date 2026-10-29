@@ -49,6 +49,8 @@ export const DEFAULTS = {
     effort: 'high', // off | low | high | max
   },
   loop: {
+    // false = no lead: the executor works on the goal directly (a failing check command sends it back to fix it)
+    useLead: true,
     maxRounds: 30,
     finalReview: true, // after GPT says done, a fresh GPT session reviews independently
     autonomy: 'auto', // auto = GPT decides with its recommended option; ask = may pause to ask the user

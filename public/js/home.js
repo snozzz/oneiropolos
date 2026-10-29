@@ -1,7 +1,7 @@
 // Home: a verse and the goal box. The box holds the working directory, the models, and a "+" menu with the rest
 // (templates, Team Mode, task mode, start time); options that differ from the defaults show as small chips.
 import { $, actions, api, app, esc, firstLine, fmtClock, merge, native, nativeCall, shortPath, toast } from './core.js';
-import { ICON, ORNAMENT, TEMPLATE_ICON, pickQuote } from './brand.js';
+import { EMBLEM, ICON, ORNAMENT, TEMPLATE_ICON, pickQuote } from './brand.js';
 import { autosize, enhanceComposer } from './composer.js';
 import { t } from './i18n.js';
 import { TASK_MODES, TEAM_MODES, mountSettingsForm, openSchedulePopover, readSettingsForm, scheduleLabel, settingsSummary, wbModel } from './forms.js';
@@ -75,7 +75,7 @@ export function updateHomeChips() {
   pick.title = dir ? shortPath(dir) : t('home.pickDirTitle');
   const st = app.newSettings;
   if (st) {
-    $('#params-label').textContent = `${roleLabel(st, 'lead')} · ${roleLabel(st, 'executor')}`;
+    $('#params-label').textContent = st.loop?.useLead === false ? roleLabel(st, 'executor') : `${roleLabel(st, 'lead')} · ${roleLabel(st, 'executor')}`;
     useRoleNames(st);
     actions.renderAccounts?.();
     $('#btn-params').title = settingsSummary(st);
@@ -93,11 +93,12 @@ function renderOptionChips() {
   const team = st?.team?.mode || 'off';
   const mode = st?.agents?.mode || 'normal';
   const chips = [];
+  if (st?.loop?.useLead === false) chips.push(['lead', 'wb', t('home.chipSolo')]);
   if (team !== 'off') chips.push(['team', 'team', t('home.chipTeam', { mode: teamLabel(team) })]);
   if (mode !== 'normal') chips.push(['mode', 'list', modeLabel(mode)]);
   if (app.newStartAt) chips.push(['schedule', 'clock', scheduleLabel(app.newStartAt)]);
   const reset = esc(t('home.reset'));
-  const html = chips.map(([id, icon, label]) => `<span class="opt-chip" data-opt="${id}" role="button" tabindex="0">${ICON[icon]}<span class="lbl">${esc(label)}</span><button class="x" type="button" data-reset="${id}" title="${reset}" aria-label="${reset}">${ICON.x}</button></span>`).join('');
+  const html = chips.map(([id, icon, label]) => `<span class="opt-chip" data-opt="${id}" role="button" tabindex="0">${ICON[icon] || EMBLEM[icon]}<span class="lbl">${esc(label)}</span><button class="x" type="button" data-reset="${id}" title="${reset}" aria-label="${reset}">${ICON.x}</button></span>`).join('');
   // the environment refresh calls this every 30 s: rebuild only on a change, so an open chip menu keeps its anchor
   if (html !== chipsHtml) $('#opt-chips').innerHTML = chipsHtml = html;
 }
@@ -107,6 +108,7 @@ $('#opt-chips').addEventListener('click', (e) => {
   if (reset) {
     const id = reset.dataset.reset;
     if (id === 'team') setNewTeam('off');
+    else if (id === 'lead') setNewLead(true);
     else if (id === 'mode') setNewMode('normal');
     else {
       app.newStartAt = '';
@@ -237,6 +239,13 @@ export function setNewTeam(mode) {
   updateHomeChips();
 }
 
+export function setNewLead(on) {
+  const st = ensureNewSettings();
+  if (!st) return;
+  st.loop = { ...(st.loop || {}), useLead: on };
+  updateHomeChips();
+}
+
 export function setNewMode(mode) {
   const st = ensureNewSettings();
   if (!st) return;
@@ -247,10 +256,11 @@ export function setNewMode(mode) {
 // ---------- the "+" menu and its option menus ----------
 function openMoreMenu(anchor) {
   const st = ensureNewSettings();
-  const row = (id, icon, label, value = '') => `<button class="menu-item sub" type="button" data-opt="${id}">${ICON[icon]}<span>${esc(label)}</span>${value ? `<span class="desc">${esc(value)}</span>` : ''}<span class="chev">${ICON.chev}</span></button>`;
+  const row = (id, icon, label, value = '') => `<button class="menu-item sub" type="button" data-opt="${id}">${ICON[icon] || EMBLEM[icon]}<span>${esc(label)}</span>${value ? `<span class="desc">${esc(value)}</span>` : ''}<span class="chev">${ICON.chev}</span></button>`;
   const pop = openPopover(anchor, `
     ${row('templates', 'scroll', t('home.templates'))}
     <div class="menu-sep"></div>
+    ${row('lead', 'gpt', t('home.leadTitle'), st?.loop?.useLead === false ? t('lead.off') : t('lead.on'))}
     ${row('team', 'team', t('home.teamTitle'), teamLabel(st?.team?.mode || 'off'))}
     ${row('mode', 'list', t('home.modeTitle'), modeLabel(st?.agents?.mode || 'normal'))}
     ${row('schedule', 'clock', t('home.optStart'), app.newStartAt ? fmtClock(app.newStartAt) : t('home.now'))}`, { align: 'left', className: 'more-pop' });
@@ -263,9 +273,23 @@ $('#btn-more').onclick = (e) => openMoreMenu(e.currentTarget);
 
 function openOption(id, anchor) {
   if (id === 'templates') openTemplateMenu(anchor);
+  else if (id === 'lead') openLeadMenu(anchor);
   else if (id === 'team') openTeamMenu(anchor);
   else if (id === 'mode') openModeMenu(anchor);
   else if (id === 'schedule') openSchedule(anchor);
+}
+
+function openLeadMenu(anchor) {
+  const on = ensureNewSettings()?.loop?.useLead !== false;
+  const pop = openPopover(anchor, `<div class="menu-label">${esc(t('home.leadTitle'))}</div>
+    ${menuItem({ act: 'on', label: t('lead.on'), checked: on })}${menuItem({ act: 'off', label: t('lead.off'), checked: !on })}
+    <div class="hint pop-hint">${esc(on ? t('lead.onHint') : t('lead.offHint'))}</div>`, { align: 'left' });
+  pop.onclick = (ev) => {
+    const b = ev.target.closest('[data-act]');
+    if (!b) return;
+    closePopover();
+    setNewLead(b.dataset.act === 'on');
+  };
 }
 
 function openTeamMenu(anchor) {

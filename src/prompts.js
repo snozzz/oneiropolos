@@ -32,8 +32,10 @@ ${checkCommand ? `- After every round the program itself runs the check command 
 ${OUTPUT_REMINDER}`;
 }
 
-export function workerPrompt({ round, instruction, workdir, handoff, hookContext }) {
-  return `${handoff ? `${handoff}\n\n` : ''}${hookContext ? `${hookContext}\n\n` : ''}[Round ${round} · instruction from the Lead]
+const WORK_FROM = { user: "the user's request", check: 'the check command failed' };
+
+export function workerPrompt({ round, instruction, workdir, handoff, hookContext, source }) {
+  return `${handoff ? `${handoff}\n\n` : ''}${hookContext ? `${hookContext}\n\n` : ''}[Round ${round} · ${WORK_FROM[source] || 'instruction from the Lead'}]
 
 ${instruction}
 
@@ -246,6 +248,17 @@ The program pauses here until the user decides whether to raise the limit. Nothi
 ${truncate(instruction, 3500)}
 
 ${OUTPUT_REMINDER}`;
+}
+
+/** No lead: the check command failed after the executor's round, so it goes back with the output. */
+export function soloFixPrompt(check) {
+  return `The check command the user configured failed after your work. Fix the cause, run it again, and report.
+${formatCheck(check)}`;
+}
+
+/** No lead: messages the user sent while the executor worked or after it finished. */
+export function soloMessagesPrompt(messages) {
+  return messages.length === 1 ? messages[0].text : list(messages);
 }
 
 /** Plan Mode: the user is about to approve the plan; after approval the Lead runs all phases continuously. */
