@@ -1720,7 +1720,9 @@ export class Orchestrator {
       return;
     }
     const w = rec?.worker || {};
-    const report = String(w.resultText || (w.lastTexts || []).join('\n') || '').split('\n').filter((l) => l.trim() && !/^#{1,6}\s/.test(l)).join(' ');
+    // the summary is the report's first section ("What was done"), without the heading
+    const sections = String(w.resultText || (w.lastTexts || []).join('\n') || '').split(/^#{1,6}\s.*$/m).map((x) => x.trim()).filter(Boolean);
+    const report = oneLine(sections[0] || '', 600);
     if (w.ok || w.interrupted) {
       s.lastAudit = { verdict: 'done', assessment: truncate(report, 600) || t('srv.goalDone'), plan: s.plan || [], issues: [], next_instruction: '', team: [], progress: 100, question_for_user: '' };
     } else {
