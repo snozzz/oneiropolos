@@ -347,12 +347,12 @@ export class Orchestrator {
 
   /** Writes the system prompt of a role to a file in the run directory (Codex and WorkBuddy both read it from there). */
   writeSystemPrompt(role, ctx, name = role) {
-    const { text, source } = buildSystemPrompt(role, ctx);
+    const { text, source, mode } = buildSystemPrompt(role, ctx);
     const dir = path.join(this.dir, 'prompts');
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${name}.md`);
     fs.writeFileSync(file, text);
-    return { file, source };
+    return { file, source, mode };
   }
 
   /** WorkBuddy hooks (--settings): the safety gate and the user's tool hooks, both handled by src/hook-gate.js. */
@@ -372,7 +372,7 @@ export class Orchestrator {
   }
 
   /** Options of one executor call; each engine takes what it supports (hooks and sub-agents only where they exist). */
-  execCallOptions({ round, member, cwd, sysFile, extraDirs = [] }) {
+  execCallOptions({ round, member, cwd, sysFile, sysMode, extraDirs = [] }) {
     const wbc = this.cfg.workbuddy;
     const spec = roleSpec(this.cfg, 'executor');
     const eng = engine(spec.engine);
@@ -392,6 +392,7 @@ export class Orchestrator {
       maxTurns: wbc.maxTurnsPerCall,
       tools: wbc.tools || undefined,
       systemFile: sysFile,
+      systemMode: sysMode,
       agents: eng.meta.agents && ctx.subagents.length ? agentsArg(ctx.subagents) : '',
       hooks: eng.meta.gate ? this.wbHooks({ round, member }) : {},
       mcpConfig: wbMcpConfig(this.cfg),
@@ -837,6 +838,7 @@ export class Orchestrator {
         schemaPath: this.schemaPath,
         schema: JSON.stringify(GPT_OUTPUT_SCHEMA),
         systemFile: sys.file,
+        systemMode: sys.mode,
         webSearch: Boolean(c.webSearch),
         mcpArgs: codexMcpArgs(this.cfg),
         mcpConfig: wbMcpConfig(this.cfg),
@@ -1233,6 +1235,7 @@ export class Orchestrator {
         slot: s.wb,
         firstPrompt: first,
         sysFile: sys.file,
+        sysMode: sys.mode,
         rdir,
         toolsFile: path.join(rdir, 'tools.json'),
         inFlight: rec.workerInFlight,
@@ -1260,7 +1263,7 @@ export class Orchestrator {
    * step limits and transient errors, waits out rate limits, rotates the session on context overflow.
    * Returns the aggregate worker record.
    */
-  async runExecutor({ rec, round, member, cwd, slot, firstPrompt, sysFile, rdir, toolsFile, inFlight, setInFlight, prevAgg, onAgg, step, signal, extraDirs = [] }) {
+  async runExecutor({ rec, round, member, cwd, slot, firstPrompt, sysFile, sysMode, rdir, toolsFile, inFlight, setInFlight, prevAgg, onAgg, step, signal, extraDirs = [] }) {
     const s = this.state;
     const wbc = this.cfg.workbuddy;
     const lc = this.cfg.loop;
@@ -1324,7 +1327,7 @@ export class Orchestrator {
       this.emit('wb.start', { round, ...tag, resume: slot.sessionStarted, sessionId: slot.sessionId, continuation: agg.calls > 0, prompt: truncate(prompt, 24_000), engine: spec.engine });
       const live = this.liveWriter(round, member);
       const r = await eng.exec({
-        ...this.execCallOptions({ round, member, cwd, sysFile, extraDirs }),
+        ...this.execCallOptions({ round, member, cwd, sysFile, sysMode, extraDirs }),
         sessionId: slot.sessionId,
         resume: slot.sessionStarted,
         prompt,
@@ -1492,6 +1495,7 @@ export class Orchestrator {
           slot: st,
           firstPrompt: first,
           sysFile: sys.file,
+          sysMode: sys.mode,
           rdir,
           toolsFile: path.join(rdir, `tools.${m.name}.json`),
           inFlight: st.inFlight,

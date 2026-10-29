@@ -2,6 +2,7 @@
 // (CLAUDE_CONFIG_DIR, ~/.wbloop/claude-home by default), so the user's own ~/.claude hooks, plugins and memory never
 // leak into a task and the app has a separate sign-in. Same stream-json protocol as WorkBuddy's core.
 // Lead: Bash runs in Claude Code's sandbox with only the scratch directory writable; file-writing tools are removed.
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { t } from '../i18n.js';
@@ -140,7 +141,9 @@ function baseArgs(o) {
   if (o.effort && EFFORTS.includes(o.effort)) args.push('--effort', o.effort);
   if (o.resume) args.push('--resume', o.sessionId);
   else args.push('--session-id', o.sessionId);
-  if (o.systemFile) args.push('--system-prompt-file', o.systemFile);
+  // the role brief goes after Claude Code's own prompt; a custom prompt replaces it
+  if (o.systemFile && o.systemMode === 'replace') args.push('--system-prompt-file', o.systemFile);
+  else if (o.systemFile) args.push('--append-system-prompt', fs.readFileSync(o.systemFile, 'utf8'));
   if (o.mcpConfig) args.push('--mcp-config', o.mcpConfig);
   return args;
 }

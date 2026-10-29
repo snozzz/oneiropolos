@@ -76,7 +76,7 @@ test('rollback to a round, undo it, export the conversation, side question, proj
   const call = env.codexCalls().at(-1);
   assert.equal(call.args[call.args.indexOf('-s') + 1], 'read-only', 'side questions are read-only');
   assert.ok(!call.args.includes('--output-schema') && call.prompt.includes('How is it going?'));
-  assert.ok(call.instructions.includes("Oneiropolos' advisor"), 'the advisor system prompt is used');
+  assert.ok(call.instructions.includes('# Oneiropolos · Advisor'), 'the advisor system prompt is used');
   assert.equal(readState(run.id).gpt.threadId, threadBefore, "the task's GPT session is untouched");
 
   const files = await svc.listProjectFiles(env.work);

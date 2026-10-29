@@ -362,7 +362,7 @@ export function classifyWbError(text) {
 export async function runWorkBuddyTurn(opts) {
   const {
     found, sessionId, resume, prompt, cwd, model, effort, contextWindow, permissionMode = 'bypassPermissions', maxTurns = 80,
-    appendSystemPrompt, systemPromptFile, agents, hooks, mcpConfig, addDirs = [], autocompact, env: extraEnv,
+    appendSystemPrompt, systemPromptFile, systemMode = 'append', agents, hooks, mcpConfig, addDirs = [], autocompact, env: extraEnv,
     onEvent, onLive, signal, timeoutMs, idleTimeoutMs, rawFile, tools = WB_DEFAULT_TOOLS, disallowed = WB_DISALLOWED_TOOLS, jsonSchema,
   } = opts;
   if (!found) throw new Error(t('srv.wb.missing'));
@@ -385,8 +385,10 @@ export async function runWorkBuddyTurn(opts) {
   if (Object.keys(settings).length) args.push('--settings', JSON.stringify(settings));
   if (resume) args.push('--resume', sessionId);
   else args.push('--session-id', sessionId);
-  if (systemPromptFile) args.push('--system-prompt-file', systemPromptFile);
-  if (appendSystemPrompt) args.push('--append-system-prompt', appendSystemPrompt);
+  // the role brief goes after the core's own prompt; a custom prompt replaces it
+  const appended = [systemPromptFile && systemMode !== 'replace' ? fs.readFileSync(systemPromptFile, 'utf8') : '', appendSystemPrompt || ''].filter(Boolean).join('\n\n');
+  if (systemPromptFile && systemMode === 'replace') args.push('--system-prompt-file', systemPromptFile);
+  if (appended) args.push('--append-system-prompt', appended);
   if (agents) args.push('--agents', agents);
   if (mcpConfig) args.push('--mcp-config', mcpConfig);
   for (const d of addDirs) if (d) args.push('--add-dir', d);

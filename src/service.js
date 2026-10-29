@@ -528,11 +528,11 @@ function saveAside(id, rec) {
 }
 
 function writeAdvisorPrompt(dir, workdir, settings) {
-  const { text } = buildSystemPrompt('advisor', { settings, workdir, names: roleNames(settings) });
+  const { text, mode } = buildSystemPrompt('advisor', { settings, workdir, names: roleNames(settings) });
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'advisor-system.md');
   fs.writeFileSync(file, text);
-  return file;
+  return { file, mode };
 }
 
 /** Runs a read-only turn of the lead's engine in the background. onDone(result) persists the outcome. */
@@ -558,7 +558,7 @@ function runAdvisor({ jobId, prompt, cwd, settings, dir, kind, onDone }) {
     model,
     effort: spec.engine === 'deepseek' ? 'high' : 'medium',
     sandbox: 'read-only',
-    systemFile: writeAdvisorPrompt(dir, cwd, cfg),
+    ...(({ file, mode }) => ({ systemFile: file, systemMode: mode }))(writeAdvisorPrompt(dir, cwd, cfg)),
     outFile: path.join(dir, `${jobId}.md`),
     rawFile: path.join(dir, `${jobId}.jsonl`),
     timeoutMs: 15 * 60_000,

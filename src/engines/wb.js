@@ -48,7 +48,7 @@ export function defaultModel() {
 export const EFFORTS = [...WB_EFFORTS, 'off'];
 
 export function exec(o) {
-  return runWorkBuddyTurn({ ...o, found: o.found, systemPromptFile: o.systemFile });
+  return runWorkBuddyTurn({ ...o, found: o.found, systemPromptFile: o.systemFile, systemMode: o.systemMode });
 }
 
 export async function lead(o) {
@@ -67,6 +67,7 @@ export async function lead(o) {
     tools: process.platform === 'win32' ? LEAD_TOOLS.replace(',Bash', '') : LEAD_TOOLS,
     hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: gate, timeout: 30 }] }] },
     systemPromptFile: o.systemFile,
+    systemMode: o.systemMode,
     mcpConfig: o.mcpConfig,
     jsonSchema: o.schema,
     onEvent: leadEventMapper(o.onEvent),

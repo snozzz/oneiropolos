@@ -51,7 +51,7 @@ test('Plan Mode: a message revises the plan, approval starts execution; hooks in
   assert.equal(seen.filter((k) => k === 'plan.approval').length, 2, 'the revised plan needs approval again');
   const codex = env.codexCalls();
   assert.ok(codex[0].prompt.includes('SESSION-CONTEXT-42'), 'onSessionStart context goes to the planner');
-  assert.ok(codex[0].instructions.includes('Plan Mode is ON'));
+  assert.ok(codex[0].instructions.includes('Plan Mode: the user approves your plan'));
   assert.ok(codex[1].prompt.includes('please add a test') && codex[1].prompt.includes('from-hook'), 'onUserMessage adds context to the message');
   const wb = env.wbCalls();
   assert.equal(wb.length, 1);

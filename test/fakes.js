@@ -20,8 +20,11 @@ const resume = args[1] === 'resume';
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 const threadId = resume ? args[args.length - 2] : 'thread-' + n;
 const instr = (args.find((a) => a.startsWith('model_instructions_file=')) || '').slice('model_instructions_file='.length);
-const instructions = instr ? fs.readFileSync(JSON.parse(instr), 'utf8') : '';
-fs.appendFileSync(scriptPath + '.calls', JSON.stringify({ n, model, resume, cwd: process.cwd(), args, prompt: stdin, instructions }) + '\\n');
+const dev = (args.find((a) => a.startsWith('developer_instructions=')) || '').slice('developer_instructions='.length);
+// instructions: replaced base instructions (model_instructions_file) or added developer instructions
+const instructions = instr ? fs.readFileSync(JSON.parse(instr), 'utf8') : dev ? JSON.parse(dev) : '';
+const replaced = Boolean(instr);
+fs.appendFileSync(scriptPath + '.calls', JSON.stringify({ n, model, resume, cwd: process.cwd(), args, prompt: stdin, instructions, replaced }) + '\\n');
 out({ type: 'thread.started', thread_id: threadId });
 if ((script.badModels || []).includes(model)) {
   const msg = JSON.stringify({ type: 'error', status: 400, error: { type: 'invalid_request_error', message: "The '" + model + "' model is not supported when using Codex with a ChatGPT account." } });
@@ -70,7 +73,7 @@ if (member && script.byMember && script.byMember[member]) {
   step = script.calls[Math.min(n, script.calls.length - 1)];
 }
 const sysFile = flag('--system-prompt-file');
-fs.appendFileSync(scriptPath + '.calls', JSON.stringify({ n, member, args, cwd: process.cwd(), prompt, resume: args.includes('--resume'), system: sysFile ? fs.readFileSync(sysFile, 'utf8') : '', env: { cfg: process.env.CODEBUDDY_CONFIG_DIR, lite: process.env.CODEBUDDY_FORCE_LITE_WB_BUNDLE, product: process.env.ACC_PRODUCT_CONFIG_PATH } }) + '\\n');
+fs.appendFileSync(scriptPath + '.calls', JSON.stringify({ n, member, args, cwd: process.cwd(), prompt, resume: args.includes('--resume'), system: sysFile ? fs.readFileSync(sysFile, 'utf8') : flag('--append-system-prompt'), replaced: Boolean(sysFile), env: { cfg: process.env.CODEBUDDY_CONFIG_DIR, lite: process.env.CODEBUDDY_FORCE_LITE_WB_BUNDLE, product: process.env.ACC_PRODUCT_CONFIG_PATH } }) + '\\n');
 if (step.result === 'crash_before_init') process.exit(4);
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 out({ type: 'system', subtype: 'init', session_id: sessionId, model: 'fake-model', cwd: process.cwd() });

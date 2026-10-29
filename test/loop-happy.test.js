@@ -67,8 +67,8 @@ test('full loop: plan → work (auto-continue after the step limit) → audit �
   assert.equal(wbSettings.contextWindow, 600000, 'the context window goes through --settings');
   assert.ok(wbSettings.hooks.PreToolUse[0].hooks[0].command.includes('hook-gate.js'), 'the safety gate is installed as a PreToolUse hook');
   assert.equal(wbSettings.hooks.PreToolUse[0].matcher, 'Bash|PowerShell');
-  assert.ok(wb[0].system.startsWith('You are WorkBuddy, working as the Executor'), 'the system prompt is replaced completely');
-  assert.ok(wb[0].system.includes('agent_explore') && wb[0].system.includes('Project Notebook'), 'sub-agents and the notebook are described');
+  assert.ok(wb[0].system.startsWith('# Oneiropolos · Executor') && !wb[0].replaced, 'the brief is appended to WorkBuddy\'s own prompt');
+  assert.ok(wb[0].system.includes('agent_explore') && wb[0].system.includes('Project notebook'), 'sub-agents and the notebook are described');
   const agents = JSON.parse(wb[0].args[wb[0].args.indexOf('--agents') + 1]);
   assert.deepEqual(Object.keys(agents).sort(), ['agent_analyze', 'agent_debug', 'agent_explore', 'agent_general', 'agent_plan', 'agent_qa']);
   assert.ok(agents.agent_explore.tools.includes('Read') && !agents.agent_explore.tools.includes('Write'), 'the explorer is read-only');
@@ -90,9 +90,9 @@ test('full loop: plan → work (auto-continue after the step limit) → audit �
   assert.equal(codex[0].resume, false);
   assert.ok(codex[1].resume && codex[2].resume, 'audits resume the same GPT session');
   assert.equal(codex[3].resume, false, 'the independent review is a fresh session');
-  assert.ok(codex[3].instructions.startsWith('You are an independent Quality Assurance reviewer') && codex[3].prompt.includes('Their completion statement'));
-  assert.ok(codex[0].instructions.startsWith('You are Oneiropolos — the Lead'), "Codex's base instructions are replaced completely");
-  assert.ok(codex[0].args.some((a) => a.startsWith('model_instructions_file=')));
+  assert.ok(codex[3].instructions.startsWith('# Oneiropolos · Reviewer') && codex[3].prompt.includes('Their completion statement'));
+  assert.ok(codex[0].instructions.startsWith('# Oneiropolos · Lead'), 'the lead brief');
+  assert.ok(codex[0].args.some((a) => a.startsWith('developer_instructions=')) && !codex[0].replaced, "Codex keeps its own base instructions");
   assert.ok(codex[1].prompt.includes('a.txt') && codex[1].prompt.includes('a2.txt'), 'the audit prompt has the round diff');
   assert.ok(codex[0].args.includes('--ignore-user-config'));
   assert.ok(codex[0].args.includes('--output-schema'));

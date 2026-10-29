@@ -35,7 +35,7 @@ test('the check command runs every round and goes to GPT; at the round limit GPT
   assert.equal(codex.length, 3, 'plan, audit of round 1, wrap-up');
   assert.ok(codex[0].prompt.includes('echo CHECK-OK'), 'GPT learns about the check command while planning');
   assert.ok(codex[1].prompt.includes('Check command') && codex[1].prompt.includes('CHECK-OK') && codex[1].prompt.includes('exit code 3'), 'the audit prompt carries the check output');
-  assert.ok(codex[0].instructions.includes('Evidence required before "done"') && codex[1].prompt.includes('not just "tests pass"'), '"done" needs evidence');
+  assert.ok(codex[0].instructions.includes('"done" needs evidence for every requirement') && codex[1].prompt.includes('not just "tests pass"'), '"done" needs evidence');
   assert.ok(codex[2].prompt.includes('reached the round limit'), 'round 2 exceeds the limit: wrap-up');
   assert.equal(env.wbCalls().length, 1, 'the round beyond the limit never reached WorkBuddy');
   assert.equal(s.rounds[1].wrapUp.verdict, 'continue');

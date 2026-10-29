@@ -64,7 +64,7 @@ test('Team Mode: teammates work in parallel in private copies, their work is mer
   assert.equal(fs.readFileSync(path.join(env.work, 'shared.txt'), 'utf8'), 'A\nB\n', 'round 2 resolved the conflict');
 
   const codex = env.codexCalls();
-  assert.ok(codex[0].instructions.includes('Team Mode (multi-agent collaboration) — available'), 'the Lead knows Team Mode');
+  assert.ok(codex[0].instructions.includes('Team Mode (optional)'), 'the Lead knows Team Mode');
   assert.ok(codex[1].prompt.includes('### Team round (2 teammates in parallel)') && codex[1].prompt.includes('alpha done') && codex[1].prompt.includes('beta done'));
   assert.ok(codex[1].prompt.includes('**Merge conflicts**') && codex[1].prompt.includes('- shared.txt'), 'the audit names the conflicts');
   const final = fs.readFileSync(path.join(env.home, 'runs', run.id, 'rounds', '1', 'diff.json'), 'utf8');

@@ -152,7 +152,7 @@ test('Claude leads, DeepSeek executes: verdicts via --json-schema, work via DSH 
   assert.deepEqual(dc[0].patch.find((r) => r.id === 'approval').config, { policy: 'never' });
   assert.equal(dc[0].patch.find((r) => r.id === 'permission').config.defaultPreset, 'unattended-write');
   assert.equal(dc[0].patch.find((r) => r.id === 'agent-default-model').config.model, 'deepseek-v4-pro');
-  assert.ok(dc[0].patch.find((r) => r.id === 'system-prompt').config.personaSuffix.includes('You are DeepSeek, working as the Executor'));
+  assert.ok(dc[0].patch.find((r) => r.id === 'system-prompt').config.personaSuffix.includes('You are the Executor of an unattended coding loop'));
   assert.ok(dc[0].prompt.includes('create d.txt'));
 
   const events = readEvents(run.id).events;
@@ -191,6 +191,6 @@ test('WorkBuddy leads, ChatGPT executes: read-only gate for the lead, workspace-
   assert.equal(cx.length, 1);
   assert.ok(cx[0].args.includes('workspace-write'), 'codex executes in workspace-write');
   assert.ok(cx[0].args.some((a) => a === 'sandbox_workspace_write.network_access=true'));
-  assert.ok(cx[0].instructions.includes('You are GPT, working as the Executor'));
+  assert.ok(cx[0].instructions.includes('# Oneiropolos · Executor') && !cx[0].replaced, 'the brief is added to Codex\'s own instructions');
   assert.equal(s.rounds[0].worker.resultText, '## What was done\ncreated e.txt');
 });

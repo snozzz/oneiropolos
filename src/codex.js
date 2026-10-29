@@ -180,12 +180,13 @@ function condenseItem(phase, item) {
 /**
  * Runs one GPT turn (codex exec / codex exec resume).
  * New sessions pick the sandbox with -s, resumed ones with -c sandbox_mode (the resume subcommand has no -s).
- * instructionsFile replaces Codex's built-in base instructions completely (model_instructions_file).
+ * instructionsFile is added to Codex's own instructions as developer instructions; with instructionsMode 'replace' it
+ * replaces them completely (model_instructions_file).
  */
 export async function runCodexTurn(opts) {
   const {
     found, threadId, prompt, cwd, model, effort, sandbox = 'read-only', schemaPath,
-    outFile, rawFile, onEvent, signal, timeoutMs, idleTimeoutMs, instructionsFile, webSearch = false, extraArgs = [], codexHome = '',
+    outFile, rawFile, onEvent, signal, timeoutMs, idleTimeoutMs, instructionsFile, instructionsMode = 'append', webSearch = false, extraArgs = [], codexHome = '',
   } = opts;
   if (!found) throw new Error(t('srv.codex.missing'));
   const args = ['exec'];
@@ -193,7 +194,8 @@ export async function runCodexTurn(opts) {
   args.push('--json', '--skip-git-repo-check', '--ignore-user-config');
   if (model) args.push('-m', model);
   if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
-  if (instructionsFile) args.push('-c', `model_instructions_file=${JSON.stringify(instructionsFile)}`);
+  if (instructionsFile && instructionsMode === 'replace') args.push('-c', `model_instructions_file=${JSON.stringify(instructionsFile)}`);
+  else if (instructionsFile) args.push('-c', `developer_instructions=${JSON.stringify(fs.readFileSync(instructionsFile, 'utf8'))}`);
   if (webSearch) args.push('-c', 'web_search="live"');
   args.push(...extraArgs);
   if (threadId) args.push('-c', `sandbox_mode="${sandbox}"`);
