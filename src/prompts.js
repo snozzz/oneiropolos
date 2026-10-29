@@ -80,8 +80,9 @@ export function formatToolSummary(toolCalls) {
   for (const c of toolCalls) counts[c.name] = (counts[c.name] || 0) + 1;
   const countLine = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([n, k]) => `${n}×${k}`).join('  ');
   const important = toolCalls.filter((c) => !['Read', 'Glob', 'Grep', 'TaskList', 'TaskGet', 'TaskCreate', 'TaskUpdate', 'TaskOutput', 'ToolSearch', 'NotebookRead'].includes(c.name));
-  const lines = important.slice(-80).map((c) => `${c.ok === false ? '✗' : c.ok === true ? '✓' : '…'} ${c.name}: ${oneLine(c.summary, 220)}`);
-  const skipped = important.length > 80 ? `(${important.length - 80} earlier calls omitted)\n` : '';
+  // the diff already shows what was written; these lines mainly show which commands ran and whether they failed
+  const lines = important.slice(-40).map((c) => `${c.ok === false ? '✗' : c.ok === true ? '✓' : '…'} ${c.name}: ${oneLine(c.summary, 160)}`);
+  const skipped = important.length > 40 ? `(${important.length - 40} earlier calls omitted)\n` : '';
   return `Counts: ${countLine}\n${skipped}${lines.join('\n') || '(read-only operations only)'}`;
 }
 

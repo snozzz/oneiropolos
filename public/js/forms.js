@@ -141,6 +141,7 @@ function settingsFormHtml(p, st, opts = {}) {
       formRow(t('form.maxRounds'), `<input id="${p}-rounds" type="number" min="1" max="500" value="${Number(st.loop?.maxRounds) || 30}">`,
         { forId: `${p}-rounds`, hint: opts.roundsHint || t('form.maxRoundsHint') }),
       formRow(t('form.budget'), numberControl(`${p}-budget`, Number(st.loop?.tokenBudgetM) || 0, t('form.budgetUnit'), 0, 0.5), { forId: `${p}-budget`, hint: t('form.budgetHint') }),
+      formRow(t('form.sessionCap'), numberControl(`${p}-cap`, st.loop?.sessionCapK ?? 100, t('form.sessionCapUnit'), 0, 10), { forId: `${p}-cap`, hint: t('form.sessionCapHint') }),
       formRow(t('form.check'), `<input id="${p}-check" type="text" spellcheck="false" autocomplete="off" placeholder="${esc(t('form.checkPlaceholder'))}" value="${esc(st.loop?.checkCommand || '')}">`,
         { forId: `${p}-check`, hint: t('form.checkHint') }),
       opts.autonomy ? formRow(t('form.autonomy'), `<select id="${p}-autonomy">${option('auto', t('form.autonomyAuto'), autonomy)}${option('ask', t('form.autonomyAsk'), autonomy)}</select>`,
@@ -263,6 +264,7 @@ export function readSettingsForm(root, p) {
     loop: {
       maxRounds: Math.max(1, Math.min(500, Math.round(Number(v('rounds').value)) || 30)),
       tokenBudgetM: Math.max(0, Number(v('budget').value) || 0),
+      sessionCapK: Math.max(0, Math.round(Number(v('cap').value)) || 0),
       finalReview: v('review').checked,
       checkCommand: v('check').value.trim(),
     },
