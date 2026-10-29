@@ -214,6 +214,8 @@ export async function runCodexTurn(opts) {
   let newThreadId = threadId || null;
   let lastAgentMessage = '';
   let usage = null;
+  // codex reports usage per turn only; every tool item costs one more model request, which estimates the context
+  let requests = 1;
   const errors = [];
 
   const res = await runProcess(found.path, args, {
@@ -241,6 +243,7 @@ export async function runCodexTurn(opts) {
           const phase = ev.type === 'item.started' ? 'started' : 'completed';
           const item = ev.item;
           if (phase === 'completed' && item?.type === 'agent_message') lastAgentMessage = item.text || lastAgentMessage;
+          if (phase === 'completed' && ['command_execution', 'file_change', 'mcp_tool_call', 'web_search'].includes(item?.type)) requests += 1;
           if (phase === 'completed' && item?.type === 'error') {
             // notices such as missing model metadata are not failures
             if (!/metadata/i.test(item.message || '')) errors.push(item.message || '');
@@ -288,7 +291,8 @@ export async function runCodexTurn(opts) {
         : errors.join('\n') || res.error?.message || stderrTail || t('srv.codex.exit', { code: res.code });
     error = { message: truncate(message, 2000), kind: res.aborted ? 'aborted' : res.timedOut || res.idleTimedOut ? 'transient' : classifyError(message) };
   }
-  return { ok: !failed, threadId: newThreadId, text, usage, error, durationMs: Date.now() - started };
+  const contextTokens = usage ? Math.round((usage.input_tokens || 0) / requests) : 0;
+  return { ok: !failed, threadId: newThreadId, text, usage, contextTokens, error, durationMs: Date.now() - started };
 }
 
 // ---------- Codex quota of the ChatGPT subscription (5-hour and weekly windows) ----------

@@ -84,7 +84,9 @@ if (args.includes('--include-partial-messages')) {
   if (step.liveSleepMs) { const end = Date.now() + step.liveSleepMs; while (Date.now() < end) {} }
   se({ type: 'message_stop' });
 }
-out({ type: 'assistant', session_id: sessionId, message: { model: 'fake-model', content: [{ type: 'text', text: '开始干活' }] } });
+// contextTokens: the size of this request's prompt, reported like the real core (cache inside input_tokens)
+const reqUsage = step.contextTokens ? { input_tokens: step.contextTokens, cache_read_input_tokens: Math.round(step.contextTokens * 0.9), cache_creation_input_tokens: 0, output_tokens: 7 } : undefined;
+out({ type: 'assistant', session_id: sessionId, message: { id: 'msg-' + n, model: 'fake-model', content: [{ type: 'text', text: '开始干活' }], usage: reqUsage } });
 let i = 0;
 for (const [name, content] of Object.entries(step.writeFiles || {})) {
   const id = 'tool-' + n + '-' + (i++);

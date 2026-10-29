@@ -309,14 +309,16 @@ for (const sel of ['#run-header', '#run-notice']) {
   });
 }
 
+const hitRate = (cached, input) => (input ? `${Math.round((100 * (cached || 0)) / input)}%` : '–');
+
 function planPopoverHtml() {
   const s = app.state;
   const st = s.stats || {};
   const items = (s.plan || []).map((p) => `<li class="${esc(p.status)}"><span class="mark">${p.status === 'done' ? '✓' : p.status === 'doing' ? '◆' : '○'}</span><span>${esc(p.title)}</span></li>`).join('');
   return `<div class="plan-pop"><h4>${esc(t('run.planTitle'))}</h4><ol>${items}</ol>
     <div class="stats">
-      ${esc(t('run.statsGpt', { n: st.gptTurns || 0, input: fmtTokens(st.gptIn), cached: fmtTokens(st.gptCachedIn), output: fmtTokens(st.gptOut) }))}<br>
-      ${esc(t('run.statsWb', { n: st.wbCalls || 0, input: fmtTokens(st.wbIn), output: fmtTokens(st.wbOut) }))}${st.teamRounds ? `<br>${esc(t('run.statsTeam', { n: st.teamRounds }))}` : ''}
+      ${esc(t('run.statsGpt', { n: st.gptTurns || 0, input: fmtTokens(st.gptIn), hit: hitRate(st.gptCachedIn, st.gptIn), output: fmtTokens(st.gptOut) }))}<br>
+      ${esc(t('run.statsWb', { n: st.wbCalls || 0, input: fmtTokens(st.wbIn), hit: hitRate(st.wbCachedIn, st.wbIn), output: fmtTokens(st.wbOut) }))}${st.teamRounds ? `<br>${esc(t('run.statsTeam', { n: st.teamRounds }))}` : ''}
     </div></div>`;
 }
 

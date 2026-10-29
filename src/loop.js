@@ -806,6 +806,15 @@ export class Orchestrator {
         }
       }
       s.gpt.engine = spec.engine;
+      // a long lead thread re-sends all of itself with every request: past the cap, continue from a recap instead
+      const cap = this.sessionCapTokens();
+      if (threadKey === 'threadId' && s.gpt.threadId && !rebuilt && cap && (s.gpt.contextTokens || 0) > cap) {
+        rebuilt = true;
+        s.gpt.threadId = null;
+        s.gpt.contextTokens = 0;
+        base = `${P.recapPrompt({ goal: s.goal, workdir: s.workdir, maxRounds: this.cfg.loop.maxRounds, plan: s.plan, lastAudit: s.lastAudit, rounds: s.rounds, checkCommand: this.cfg.loop.checkCommand, team: this.teamCfg, mode: this.mode, names: roleNames(this.cfg) })}\n\n---\n\n${prompt}`;
+        this.info('srv.gpt.freshThread', { k: Math.round(cap / 1000) });
+      }
       const found = eng.find(this.cfg);
       if (!found) throw new PauseSignal(spec.engine === 'chatgpt' ? 'srv.pause.noCodex' : 'srv.pause.noEngine', { name: spec.name });
       this.sandbox = this.resolveGptSandbox();
@@ -838,6 +847,7 @@ export class Orchestrator {
         timeoutMs: (c.turnTimeoutMin || 40) * 60_000,
       });
       if (r.threadId) s.gpt[threadKey] = r.threadId;
+      if (threadKey === 'threadId' && r.contextTokens) s.gpt.contextTokens = r.contextTokens;
       if (r.usage) {
         s.stats.gptIn += r.usage.input_tokens || 0;
         s.stats.gptCachedIn += r.usage.cached_input_tokens || 0;
@@ -1055,6 +1065,11 @@ export class Orchestrator {
     this.routeVerdict(out, 'wrapup');
   }
 
+  sessionCapTokens() {
+    const k = Number(this.cfg.loop?.sessionCapK);
+    return Number.isFinite(k) && k > 0 ? k * 1000 : 0;
+  }
+
   tokensUsedM() {
     const st = this.state.stats || {};
     return ((st.gptIn || 0) + (st.gptOut || 0) + (st.wbIn || 0) + (st.wbOut || 0)) / 1e6;
@@ -1179,6 +1194,7 @@ export class Orchestrator {
     slot.sessionId = uuid();
     slot.sessionStarted = false;
     slot.sessions = (slot.sessions || 0) + 1;
+    slot.contextTokens = 0;
     slot.handoff = P.handoffNote({ goal: s.goal, plan: s.plan, lastAssessment: s.lastAudit?.assessment, reason: t(reasonKey, undefined, 'en') });
     this.info('srv.wb.rotate', { reason: t(reasonKey) });
   }
@@ -1194,6 +1210,9 @@ export class Orchestrator {
     if (s.wb.compactRequested && !rec.workerInFlight) {
       s.wb.compactRequested = false;
       await this.rotateSession(s.wb, 'srv.reason.compact');
+    } else if (!rec.workerInFlight && s.wb.sessionStarted && this.sessionCapTokens() && (s.wb.contextTokens || 0) > this.sessionCapTokens()) {
+      // instructions are self-contained, so a big executor session is cheaper to restart than to re-send every request
+      await this.rotateSession(s.wb, 'srv.reason.sessionCap');
     }
     const sys = this.writeSystemPrompt('executor', this.promptContext());
     const first = await this.beforeAgentHooks({
@@ -1339,6 +1358,7 @@ export class Orchestrator {
       }
       // engines that name their own sessions (ChatGPT, DeepSeek) report the id to resume
       if (r.sessionId && r.sawInit) slot.sessionId = r.sessionId;
+      if (r.contextTokens) slot.contextTokens = r.contextTokens;
       toolCalls.push(...r.toolCalls);
       writeJsonAtomic(toolsFile, toolCalls);
       agg.calls += 1;
@@ -1357,6 +1377,7 @@ export class Orchestrator {
       if (r.usage) {
         usage = { input: (r.usage.input_tokens || 0) + (r.usage.cache_read_input_tokens || 0) + (r.usage.cache_creation_input_tokens || 0), cached: r.usage.cache_read_input_tokens || 0, output: r.usage.output_tokens || 0 };
         s.stats.wbIn += usage.input;
+        s.stats.wbCachedIn = (s.stats.wbCachedIn || 0) + usage.cached;
         s.stats.wbOut += usage.output;
         agg.usage.input += usage.input;
         agg.usage.cached += usage.cached;

@@ -57,6 +57,9 @@ export const DEFAULTS = {
     checkCommand: '', // run by the program after every round (e.g. npm test); the result goes to GPT
     checkTimeoutMin: 15,
     tokenBudgetM: 0, // token budget in millions (GPT + WorkBuddy); 0 = unlimited (snow-cli /goal --budget)
+    // A session whose context grew past this many thousand tokens starts fresh at the next round (the executor with a
+    // handover note, the lead from a recap): every request re-sends the whole context, so this bounds the cost. 0 = off.
+    sessionCapK: 100,
   },
   agents: {
     replyLanguage: 'auto', // auto (= the goal's language) | en | zh | ja

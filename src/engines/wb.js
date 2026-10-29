@@ -83,5 +83,5 @@ export async function lead(o) {
   const threadId = o.threadId || (established ? r.sessionId : null);
   if (threadId) o.onEvent?.({ kind: 'gpt.thread', threadId });
   const text = leadText(r);
-  return { ok: r.ok && Boolean(text), threadId, text, usage: leadUsage(r.usage), error: leadError(r.ok && !text ? { ...r, ok: false, errors: [t('srv.engine.noReply')] } : r), durationMs: r.durationMs };
+  return { ok: r.ok && Boolean(text), threadId, text, usage: leadUsage(r.usage), contextTokens: r.contextTokens || 0, error: leadError(r.ok && !text ? { ...r, ok: false, errors: [t('srv.engine.noReply')] } : r), durationMs: r.durationMs };
 }

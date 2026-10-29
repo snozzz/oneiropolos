@@ -327,6 +327,7 @@ async function run(o, { readOnly, onEvent }) {
           if (u) {
             hasUsage = true;
             total.input += u.input;
+            total.context = u.input;
             total.cached += u.cached;
             total.output += u.output;
           }
@@ -371,6 +372,7 @@ async function run(o, { readOnly, onEvent }) {
     maxTurnsHit: false,
     numTurns: null,
     usage: hasUsage ? { input_tokens: Math.max(0, total.input - total.cached), cache_read_input_tokens: total.cached, output_tokens: total.output } : null,
+    contextTokens: total.context || 0,
     permissionDenials: [],
     toolCalls,
     durationMs: Date.now() - started,
@@ -396,6 +398,7 @@ export async function lead(o) {
     threadId: r.sessionId,
     text,
     usage: u ? { input_tokens: u.input_tokens + u.cache_read_input_tokens, cached_input_tokens: u.cache_read_input_tokens, output_tokens: u.output_tokens } : null,
+    contextTokens: r.contextTokens || 0,
     error: r.ok && text ? null : { message: oneLine(r.errors.join('\n') || t('srv.engine.noReply'), 2000), kind: r.errorKind === 'credits' ? 'limit' : r.errorKind === 'context' ? 'transient' : r.errorKind || 'unknown' },
     durationMs: r.durationMs,
   };

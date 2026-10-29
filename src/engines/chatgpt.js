@@ -178,6 +178,7 @@ export async function exec(o) {
     maxTurnsHit: false,
     numTurns: null,
     usage: u ? { input_tokens: Math.max(0, (u.input_tokens || 0) - (u.cached_input_tokens || 0)), cache_read_input_tokens: u.cached_input_tokens || 0, output_tokens: u.output_tokens || 0 } : null,
+    contextTokens: r.contextTokens || 0,
     permissionDenials: [],
     toolCalls,
     durationMs: r.durationMs,

@@ -139,8 +139,11 @@ export function toolResultText(content) {
  * Runs one headless stream-json agent call. classify(text) maps an error text to auth | credits | limit | context |
  * transient | unknown. Returns the executor result shape the loop expects (see runExecutor in src/loop.js).
  */
-export async function runStreamJson({ command, args, env, cwd, prompt, sessionId, onEvent, onLive, signal, timeoutMs, idleTimeoutMs, rawFile, classify = () => 'unknown', crashKey = 'srv.wb.crashed' }) {
+export async function runStreamJson({ command, args, env, cwd, prompt, sessionId, onEvent, onLive, signal, timeoutMs, idleTimeoutMs, rawFile, classify = () => 'unknown', crashKey = 'srv.wb.crashed', usageIncludesCache = false }) {
   const started = Date.now();
+  // usage of every model request (by message id: one response can arrive as several assistant events)
+  const requests = new Map();
+  let contextTokens = 0;
   const toolCalls = [];
   const toolIndex = new Map();
   const texts = [];
@@ -178,6 +181,12 @@ export async function runStreamJson({ command, args, env, cwd, prompt, sessionId
         onEvent?.({ kind: 'wb.init', sessionId: ev.session_id, model: ev.model });
       } else if (ev.type === 'assistant') {
         if (!parent) live?.settle();
+        const u = ev.message?.usage;
+        if (u) {
+          const n = normalizeUsage(u, usageIncludesCache);
+          requests.set(ev.message.id || `r${requests.size}`, n);
+          if (!parent) contextTokens = n.input_tokens + n.cache_read_input_tokens + n.cache_creation_input_tokens;
+        }
         if (ev.message?.model && !parent) modelName = ev.message.model;
         for (const block of ev.message?.content || []) {
           if (block.type === 'text' && block.text?.trim()) {
@@ -243,11 +252,28 @@ export async function runStreamJson({ command, args, env, cwd, prompt, sessionId
     errorKind,
     maxTurnsHit,
     numTurns: result?.num_turns ?? null,
-    usage: result?.usage || null,
+    // The CodeBuddy core reports result.usage summed over the whole resumed session, with cached tokens inside
+    // input_tokens; the per-request usage is exact for both CLIs, so that is used when the stream has it.
+    usage: usageIncludesCache && requests.size ? sumUsage(requests.values()) : result?.usage ? normalizeUsage(result.usage, usageIncludesCache) : requests.size ? sumUsage(requests.values()) : null,
+    contextTokens,
     permissionDenials: result?.permission_denials || [],
     toolCalls,
     durationMs: Date.now() - started,
   };
+}
+
+/** Anthropic-shaped usage: input_tokens excludes the cached parts (the CodeBuddy core counts them inside input_tokens). */
+export function normalizeUsage(u, includesCache = false) {
+  const read = Number(u?.cache_read_input_tokens) || 0;
+  const write = Number(u?.cache_creation_input_tokens) || 0;
+  const input = Number(u?.input_tokens) || 0;
+  return { input_tokens: includesCache ? Math.max(0, input - read - write) : input, cache_read_input_tokens: read, cache_creation_input_tokens: write, output_tokens: Number(u?.output_tokens) || 0 };
+}
+
+function sumUsage(list) {
+  const out = { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 };
+  for (const u of list) for (const k of Object.keys(out)) out[k] += u[k];
+  return out;
 }
 
 /** Executor events of a lead call, re-shaped as the GPT steps the timeline already knows how to draw. */

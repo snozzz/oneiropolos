@@ -160,7 +160,7 @@ export async function lead(o) {
     onEvent: leadEventMapper(o.onEvent), signal: o.signal, timeoutMs: o.timeoutMs, rawFile: o.rawFile, classify, crashKey: 'srv.engine.crashed',
   });
   if (r.sessionId) o.onEvent?.({ kind: 'gpt.thread', threadId: r.sessionId });
-  return { ok: r.ok && Boolean(leadText(r)), threadId: r.sessionId, text: leadText(r), usage: leadUsage(r.usage), error: leadError(r.ok && !leadText(r) ? { ...r, ok: false, errors: [t('srv.engine.noReply')] } : r), durationMs: r.durationMs };
+  return { ok: r.ok && Boolean(leadText(r)), threadId: r.sessionId, text: leadText(r), usage: leadUsage(r.usage), contextTokens: r.contextTokens || 0, error: leadError(r.ok && !leadText(r) ? { ...r, ok: false, errors: [t('srv.engine.noReply')] } : r), durationMs: r.durationMs };
 }
 
 /** One executor call, like WorkBuddy's: hooks for the safety gate, sub-agents, extra folders, live partial output. */

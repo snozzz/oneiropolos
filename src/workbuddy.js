@@ -394,7 +394,7 @@ export async function runWorkBuddyTurn(opts) {
   if (jsonSchema) args.push('--json-schema', jsonSchema);
   return runStreamJson({
     command: found.electron, args, env: await wbEnv(found, extraEnv || {}), cwd, prompt, sessionId,
-    onEvent, onLive, signal, timeoutMs, idleTimeoutMs, rawFile, classify: classifyWbError,
+    onEvent, onLive, signal, timeoutMs, idleTimeoutMs, rawFile, classify: classifyWbError, usageIncludesCache: true,
   });
 }
 
