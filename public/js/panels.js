@@ -731,7 +731,7 @@ export async function openGptPanel() {
     const models = gptModelList().map((m) => `${esc(m.id)}${m.unavailable ? ` ${esc(t('form.unavailable'))}` : ''}`).join(', ');
     const plan = q?.planType ? { plus: 'ChatGPT Plus', pro: 'ChatGPT Pro', team: 'ChatGPT Team', business: 'ChatGPT Business', enterprise: 'ChatGPT Enterprise', free: 'ChatGPT Free' }[q.planType] || q.planType : '';
     return `
-      <div class="group-title"><span class="emb gpt">${EMBLEM.gpt}</span>${esc(t('gpt.quota'))}${loading ? ' <span class="spinner" style="margin-left:4px"></span>' : ''}<span class="gt-side">${q ? esc(`${q.source === 'live' ? t('gpt.live') : t('gpt.fromSession')} · ${fmtRelative(new Date(q.at).toISOString())}`) : ''}</span></div>
+      <div class="group-title">${chibiFace('chatgpt')}${esc(t('gpt.quota'))}${loading ? ' <span class="spinner" style="margin-left:4px"></span>' : ''}<span class="gt-side">${q ? esc(`${q.source === 'live' ? t('gpt.live') : t('gpt.fromSession')} · ${fmtRelative(new Date(q.at).toISOString())}`) : ''}</span></div>
       ${q ? `${meter(t('gpt.window5h'), q.primary)}${meter(t('gpt.windowWeek'), q.secondary)}
         <p class="muted" style="font-size:12.5px">${plan ? `${esc(plan)} · ` : ''}${esc(t('gpt.quotaNote'))}${q.resetCredits ? ` ${esc(t('gpt.resetCredits', { n: q.resetCredits }))}` : ''}${q.reached ? ` ${esc(t('gpt.reached'))}` : ''}</p>`
         : `<p class="muted">${esc(loading ? t('common.loading') : t('gpt.noQuota'))}</p>`}
@@ -789,7 +789,7 @@ export function openWbPanel() {
     return;
   }
   openModal('WorkBuddy', `
-    <div class="group-title"><span class="emb wb">${EMBLEM.wb}</span>${esc(t('wb.account'))}</div>
+    <div class="group-title">${chibiFace('workbuddy')}${esc(t('wb.account'))}</div>
     <div class="kv">
       <div class="k">${esc(t('wb.account'))}</div><div>${esc(w.nickname || t('srv.wb.loggedIn'))}</div>
       <div class="k">${esc(t('wb.app'))}</div><div class="mono">${esc(w.app)} (${esc(w.appVersion)}, core ${esc(w.cliVersion)})</div>

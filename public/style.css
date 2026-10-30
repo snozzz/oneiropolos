@@ -185,11 +185,68 @@ svg { flex: none; }
   :root:not([data-theme="light"]) .avatar.chatgpt { --av-bg: #34343a; }
   :root:not([data-theme="light"]) .avatar.workbuddy { --av-bg: #27413a; }
 }
-.msg.wb > .msg-head .avatar { width: 28px; height: 28px; margin: -3px 0; }
-.handoff-label .avatar { width: 18px; height: 18px; }
-.msg.wb.live > .msg-head .avatar { animation: av-breathe 2.6s ease-in-out infinite; }
+.msg > .msg-head .avatar { width: 28px; height: 28px; margin: -3px 0; }
+.msg.live > .msg-head .avatar { animation: av-breathe 2.6s ease-in-out infinite; }
 @keyframes av-breathe { 50% { transform: translateY(-1.5px) scale(1.04); } }
-@media (prefers-reduced-motion: reduce) { .msg.wb.live > .msg-head .avatar { animation: none; } }
+
+/* the speakers in full, standing in the blank beside their messages: the lead left of her card, the executor
+   right of her work; they stay in view while the message scrolls by, and only show where the window has room */
+.chat-scroll { container: chat / inline-size; overflow-x: hidden; }
+.fig-rail { display: none; position: absolute; top: 0; bottom: 0; width: 150px; pointer-events: none; container: fig / size; }
+.fig { position: sticky; top: 16px; display: block; height: min(150px, 100%); aspect-ratio: 1; margin-left: auto; }
+.fig img { position: relative; display: block; width: 100%; height: 100%; object-fit: contain; object-position: bottom; transform-origin: 50% 90%; }
+.fig::before { content: ""; position: absolute; left: 30%; right: 30%; bottom: 0; height: 7%; border-radius: 50%; background: radial-gradient(closest-side, rgba(40, 30, 15, .16), transparent); }
+@container fig (max-height: 95px) { .fig { visibility: hidden; } }
+.msg.gpt > .card { position: relative; }
+/* the lead's rail also covers her card's header and footer rows, which leave the left side blank */
+.msg.gpt .fig-rail { right: calc(100% + 10px); top: -34px; bottom: -24px; }
+.msg.wb { position: relative; }
+.msg.wb > .fig-rail { right: 0; }
+.msg.wb > .fig-rail .fig { margin-left: 0; }
+@container chat (min-width: 960px) {
+  .fig-rail { display: block; }
+  .msg.wb { padding-right: 160px; }
+}
+@container chat (min-width: 1120px) {
+  .msg.wb { padding-right: 0; }
+  .msg.wb > .fig-rail { right: auto; left: calc(100% + 10px); }
+}
+.msg.live .fig img { animation: fig-bob 2.8s ease-in-out infinite; }
+.fig.enter { animation: fig-in .7s cubic-bezier(.2, .8, .3, 1.15) both; }
+.fig.toss img { animation: fig-toss .6s ease-out; }
+@keyframes fig-bob { 50% { transform: translateY(-3px); } }
+@keyframes fig-in { from { opacity: 0; transform: translateY(14px) scale(.9); } }
+@keyframes fig-toss { 35% { transform: translateY(-7px) rotate(-5deg); } 70% { transform: translateY(1px) rotate(1.5deg); } }
+
+/* the handoff: the plane crosses the dotted line from the lead's face to the executor's, who catches it */
+.relay { display: inline-flex; align-items: center; margin-right: 3px; }
+.relay .avatar { width: 18px; height: 18px; }
+.relay .track { position: relative; width: 34px; height: 18px; color: var(--gold); }
+.relay .track::before { content: ""; position: absolute; left: 4px; right: 4px; top: 50%; border-top: 1px dashed var(--gold-line); }
+.relay .track svg { position: absolute; left: 11px; top: 3px; width: 12px; height: 12px; background: var(--surface); }
+.handoff.play .relay .track svg { animation: relay-fly 1s cubic-bezier(.45, 0, .3, 1) both; }
+.handoff.play .relay .from { animation: relay-throw .45s ease-out; }
+.handoff.play .relay .to { animation: relay-catch .6s .82s cubic-bezier(.3, 1.6, .5, 1); }
+.handoff.arrive .handoff-body { animation: relay-unfold .55s .95s ease-out both; }
+@keyframes relay-fly {
+  0% { transform: translate(-13px, 0) rotate(-15deg) scale(.5); opacity: 0; }
+  15% { opacity: 1; }
+  50% { transform: translate(0, -7px) rotate(0) scale(1); }
+  80% { transform: translate(13px, 0) rotate(15deg) scale(.6); opacity: 1; }
+  85% { transform: translate(13px, 0) scale(.6); opacity: 0; }
+  86% { transform: none; opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes relay-throw { 40% { transform: rotate(-14deg) translateX(-1px); } }
+@keyframes relay-catch {
+  0% { box-shadow: 0 0 0 1px var(--line), 0 0 0 0 var(--gold-line); }
+  35% { transform: translateY(-3px) scale(1.2); }
+  100% { box-shadow: 0 0 0 1px var(--line), 0 0 0 7px transparent; }
+}
+@keyframes relay-unfold { from { opacity: 0; transform: translateY(-5px); clip-path: inset(0 0 100% 0 round 11px); } to { clip-path: inset(0 0 0 0 round 11px); } }
+@media (prefers-reduced-motion: reduce) {
+  .msg.live > .msg-head .avatar, .msg.live .fig img, .fig.enter, .fig.toss img, .handoff.play .relay *, .handoff.arrive .handoff-body { animation: none; }
+}
 
 /* ---------- buttons ---------- */
 .btn {
@@ -309,7 +366,8 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; flex: none; accen
 .form-group { padding: 4px 0 8px; }
 .form-group + .form-group { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 6px; }
 .group-title { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; font-weight: 600; letter-spacing: .08em; color: var(--muted); margin-bottom: 14px; }
-.group-title .emb { align-self: center; }
+.group-title .emb, .group-title .avatar { align-self: center; }
+.group-title .avatar { width: 20px; height: 20px; }
 .group-title .gt-side { margin-left: auto; font-weight: 400; letter-spacing: 0; color: var(--muted); }
 .form-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
 .form-row > label, .form-row > .label { padding-top: 7px; font-size: 13px; color: var(--ink); }
@@ -392,6 +450,8 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; flex: none; accen
   color: var(--ink-2);
 }
 .acct:hover { background: var(--surface-2); color: var(--ink); }
+.acct-rows { display: flex; flex-direction: column; gap: 1px; }
+.acct .avatar { width: 20px; height: 20px; margin-left: -2px; }
 .acct .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
 .acct.ok .dot { background: var(--ok); }
 .acct.bad .dot { background: var(--err); }
@@ -450,8 +510,6 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; flex: none; accen
 }
 .composer textarea:focus { box-shadow: none; }
 .composer-tools { display: flex; align-items: center; gap: 4px; row-gap: 6px; margin-top: 9px; flex-wrap: wrap; min-width: 0; }
-.acct-rows { display: flex; flex-direction: column; gap: 1px; }
-.acct .avatar { width: 20px; height: 20px; margin-left: -2px; }
 .composer-tools .send-btn { margin-left: auto; }
 .composer-hint { font-size: 12px; color: var(--faint); white-space: nowrap; }
 .composer-hint b, .composer-caption b { font-weight: 500; color: var(--muted); }
@@ -656,7 +714,7 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; flex: none; accen
 .issues li.blocker .sev { color: var(--err); }
 .issues li.major .sev { color: var(--warn); }
 .handoff { margin-top: 14px; }
-.handoff-label { font-size: 11.5px; color: var(--muted); margin-bottom: 5px; display: flex; align-items: center; gap: 6px; letter-spacing: .06em; }
+.handoff-label { font-size: 11.5px; color: var(--muted); margin-bottom: 5px; display: flex; width: fit-content; align-items: center; gap: 6px; letter-spacing: .06em; }
 .handoff-label .emb { width: 14px; height: 14px; }
 .handoff-label .emb svg { width: 14px; height: 14px; }
 .handoff-body { background: var(--sunken); border-radius: 11px; padding: 10px 14px; border-left: 2px solid var(--gold-line); }

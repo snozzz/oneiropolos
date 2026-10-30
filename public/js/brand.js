@@ -143,6 +143,7 @@ export const ICON = {
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 3v1.5M12 19.5V21M3 12h1.5M19.5 12H21M5.6 5.6l1.1 1.1M17.3 17.3l1.1 1.1M5.6 18.4l1.1-1.1M17.3 6.7l1.1-1.1"/>'),
   moon: svg('<path d="M18.5 14.5A7.5 7.5 0 0 1 9.5 5.5a7.5 7.5 0 1 0 9 9z"/>'),
   palette: svg('<path d="M12 4a8 8 0 1 0 0 16c1.2 0 1.6-.9 1.2-1.8-.5-1-.1-2.2 1.3-2.2H17a3.5 3.5 0 0 0 3-3.5C20 7.4 16.4 4 12 4z"/><circle cx="8" cy="11" r=".9" fill="currentColor"/><circle cx="11" cy="7.8" r=".9" fill="currentColor"/><circle cx="15.2" cy="8.4" r=".9" fill="currentColor"/>'),
+  plane: svg('<path d="M3.5 11.2 20.5 4l-6.6 16.5-2.6-6.8z"/><path d="m11.3 13.7 9.2-9.7"/>', { sw: 1.5 }),
   scroll: svg('<path d="M7 4.5h10a2 2 0 0 1 2 2V17"/><path d="M7 4.5a2 2 0 0 0-2 2v1.5h4V6.5a2 2 0 0 0-2-2z"/><path d="M9 8v10.5a1.5 1.5 0 0 0 3 0V17h9v1.5a1.5 1.5 0 0 1-1.5 1.5H10.5"/>'),
   hourglass: svg('<path d="M7 4h10M7 20h10M8 4c0 4 8 4.5 8 8s-8 4-8 8M16 4c0 4-8 4.5-8 8s8 4 8 8"/>'),
   data: svg('<ellipse cx="12" cy="6.5" rx="7" ry="2.5"/><path d="M5 6.5v11c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-11M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>'),
@@ -177,13 +178,20 @@ export const EMBLEM = {
   rev: svg('<path d="M12 4.8V20.2M8.6 20.2h6.8M5.2 7.4h13.6"/><path d="M5.2 7.4 2.9 12.8M5.2 7.4l2.3 5.4M2.6 12.8a2.6 2.6 0 0 0 5.2 0z"/><path d="M18.8 7.4l-2.3 5.4M18.8 7.4l2.3 5.4M16.2 12.8a2.6 2.6 0 0 0 5.2 0z"/><circle cx="12" cy="4.2" r=".9" fill="currentColor"/>', { sw: 1.35 }),
 };
 
-// the executors' chibi faces (public/chibi, original art): the whale girl (DeepSeek), the orange young lady (Claude),
+// the engines' chibis (public/chibi, original art): the whale girl (DeepSeek), the orange young lady (Claude),
 // the black-and-white scholar (GPT), the mint cat-eared buddy (WorkBuddy)
 const CHIBI = new Set(['chatgpt', 'claude', 'deepseek', 'workbuddy']);
+const chibiId = (engineId) => (CHIBI.has(engineId) ? engineId : 'workbuddy');
 
 export function chibiFace(engineId, cls = '') {
-  const id = CHIBI.has(engineId) ? engineId : 'workbuddy';
+  const id = chibiId(engineId);
   return `<span class="avatar ${id}${cls ? ` ${cls}` : ''}" data-engine="${id}"><img src="/chibi/${id}-face.png" alt="" draggable="false"></span>`;
+}
+
+/** The whole figure, for the blank beside a message. */
+export function chibiFigure(engineId, cls = '') {
+  const id = chibiId(engineId);
+  return `<span class="fig ${id}${cls ? ` ${cls}` : ''}" data-engine="${id}"><img src="/chibi/${id}.png" alt="" draggable="false"></span>`;
 }
 
 // template icons: a temple for new projects, Zeus' thunderbolt for performance, a shield for tests, Argus' eye for reviews

@@ -3,8 +3,8 @@ import {
   $, $$, ACTIVE, TOKEN, actions, api, app, collapsible, copyText, el, esc, firstLine, fixCollapsibles, fmtClock, fmtCtx, fmtDuration,
   fmtTime, fmtTokens, md, mdInline, msgText, oneLine, shortPath, tEffort, tPhase, tSeverity, tStatus, tVerdict, toast,
 } from './core.js';
-import { DONE_VERSE, EMBLEM, ICON, LAUREL, chibiFace } from './brand.js';
-import { ENGINE_NAMES, engineOf, modelName, roleLabel, roleSpec, useRoleNames } from './engines.js';
+import { DONE_VERSE, EMBLEM, ICON, LAUREL, chibiFace, chibiFigure } from './brand.js';
+import { ENGINE_NAMES, ROLE_DEFAULTS, engineOf, modelName, roleLabel, roleSpec, useRoleNames } from './engines.js';
 import { autosize, enhanceComposer } from './composer.js';
 import { setRoleNames, t } from './i18n.js';
 import { TASK_MODES, TEAM_MODES, mountSettingsForm, readSettingsForm, wbEffortText, wbModel } from './forms.js';
@@ -361,14 +361,47 @@ function copyLast() {
 
 // ---------- the conversation ----------
 const appendThread = (node) => $('#timeline').appendChild(node);
-/** The task's executor engine; while history replays before the state arrives, the task list knows its name. */
-function execEngine() {
-  if (app.state?.settings) return engineOf(app.state.settings, 'executor');
-  const name = (app.runs || []).find((r) => r.id === app.currentId)?.names?.exec;
-  return Object.keys(ENGINE_NAMES).find((k) => ENGINE_NAMES[k] === name) || 'workbuddy';
+/** The task's engine for a role; while history replays before the state arrives, the task list knows its name. */
+function roleEngine(role, key) {
+  if (app.state?.settings) return engineOf(app.state.settings, role);
+  const name = (app.runs || []).find((r) => r.id === app.currentId)?.names?.[key];
+  return Object.keys(ENGINE_NAMES).find((k) => ENGINE_NAMES[k] === name) || ROLE_DEFAULTS[role];
 }
+const execEngine = () => roleEngine('executor', 'exec');
+const leadEngine = () => roleEngine('lead', 'lead');
 
 const emb = (kind) => `<span class="emb ${kind}">${EMBLEM[kind]}</span>`;
+// the speaker in full, standing in the blank beside the message (wide windows); a live message's figure walks in
+const figRail = (engine) => `<div class="fig-rail" aria-hidden="true">${chibiFigure(engine, app.caughtUp ? 'enter' : '')}</div>`;
+
+/** Point a message's face and figure at the engine that answered (the role may have been switched mid-task). */
+function setSpeaker(node, engine) {
+  const av = $(':scope > .msg-head .avatar', node);
+  if (av && av.dataset.engine !== engine) av.outerHTML = chibiFace(engine);
+  const fig = $('.fig-rail > .fig', node);
+  if (fig && fig.dataset.engine !== engine) fig.outerHTML = chibiFigure(engine, fig.classList.contains('enter') ? 'enter' : '');
+}
+
+// the handoff: lead's face, a paper plane on a dotted line, the executor's face
+const relay = (from, to) => `<span class="relay">${chibiFace(from, 'from')}<span class="track">${ICON.plane}</span>${chibiFace(to, 'to')}</span>`;
+
+/** The plane crosses to the executor and her face catches it; the lead's figure throws it. Live handoffs also unfold the instruction. */
+function playHandoff(h, arriving = false) {
+  if (!h || h.dataset.playing) return;
+  h.dataset.playing = '1';
+  h.classList.remove('play');
+  void h.offsetWidth;
+  h.classList.add('play');
+  if (arriving) h.classList.add('arrive');
+  const fig = $('.fig-rail > .fig', h.closest('.msg') || h);
+  fig?.classList.remove('enter', 'toss');
+  void fig?.offsetWidth;
+  fig?.classList.add('toss');
+  setTimeout(() => {
+    delete h.dataset.playing;
+    fig?.classList.remove('toss');
+  }, 1500);
+}
 
 function ensureGoalBubble() {
   if (app.t.goal || !app.state) return;
@@ -405,15 +438,15 @@ function ensureGptCard(label) {
   const wrap = label.startsWith('wrapup-');
   const node = appendThread(el(`
     <div class="msg right gpt${rev ? ' rev' : ''}${wrap ? ' wrap' : ''}">
-      <div class="msg-head"><span class="meta g-meta"></span><span class="g-verdict"></span><span class="what">${esc(gptTitle(label))}</span><span class="who">${esc(rev ? t('who.reviewer') : t('who.gpt'))}</span>${emb(rev ? 'rev' : 'gpt')}</div>
-      <div class="card">
+      <div class="msg-head"><span class="meta g-meta"></span><span class="g-verdict"></span><span class="what">${esc(gptTitle(label))}</span><span class="who">${esc(rev ? t('who.reviewer') : t('who.gpt'))}</span>${chibiFace(leadEngine())}</div>
+      <div class="card">${figRail(leadEngine())}
         <details class="g-steps hidden"><summary>${ICON.chev.replace('<svg', '<svg class="chev" width="10" height="10"')}<span class="g-n-label"></span></summary><ol class="steps"></ol></details>
         <div class="g-status"><span class="moonwait">${EMBLEM.user}</span><span class="txt">${esc(t('run.thinking'))}</span><span class="last"></span></div>
         <div class="g-body"></div>
       </div>
       <div class="msg-time"><button class="link" type="button" data-prompt="${esc(label)}">${esc(t('run.promptToGpt'))}</button></div>
     </div>`));
-  const c = { node, label, n: 0, cmd: null, done: false };
+  const c = { node, label, n: 0, cmd: null, done: false, engine: leadEngine() };
   app.t.gpt.set(label, c);
   return c;
 }
@@ -454,9 +487,11 @@ function renderGptResult(c, out, meta) {
       <div class="assign-list">${out.team.map((m, i) => `<div class="assign"><div class="assign-head"><b>${esc(m.name)}</b>${m.role ? `<span class="muted">${esc(m.role)}</span>` : ''}${m.owns ? `<span class="owns mono" title="${esc(t('run.owns'))}">${esc(oneLine(m.owns, 80))}</span>` : ''}</div>${collapsible(md(m.instruction), `${key}-t${i}`)}</div>`).join('')}</div></div>`;
   } else if (out.verdict === 'continue' && out.next_instruction) {
     const label = c.label.startsWith('wrapup-') ? t('run.toWbAfterLimit') : c.label === 'plan' && app.state?.settings?.agents?.mode === 'plan' ? t('run.toWbAfterApproval') : t('run.toWb');
-    html += `<div class="handoff"><div class="handoff-label">${chibiFace(execEngine())}${esc(label)}</div><div class="handoff-body">${collapsible(md(out.next_instruction), `${key}-i`)}</div></div>`;
+    html += `<div class="handoff"><div class="handoff-label">${relay(c.engine, execEngine())}${esc(label)}</div><div class="handoff-body">${collapsible(md(out.next_instruction), `${key}-i`)}</div></div>`;
   }
   $('.g-body', c.node).innerHTML = html;
+  c.node.classList.remove('live');
+  if (app.caughtUp) playHandoff($('.g-body > .handoff:not(.ask):not(.team)', c.node), true);
   $('.g-verdict', c.node).innerHTML = `<span class="verdict ${esc(out.verdict)}">${esc(tVerdict(out.verdict))}</span>`;
   // progress lives in the header and the plan; the card keeps model and time only
   $('.g-meta', c.node).textContent = meta || '';
@@ -488,7 +523,7 @@ function laneObject(node, n, member) {
 function ensureWbCard(n) {
   if (app.t.wb.has(`${n}`)) return app.t.wb.get(`${n}`);
   const node = appendThread(el(`
-    <div class="msg wb" id="wb-${n}">
+    <div class="msg wb" id="wb-${n}">${figRail(execEngine())}
       <div class="msg-head">${chibiFace(execEngine())}<span class="who">${esc(t('who.wb'))}</span><span class="what">${esc(t('round.n', { n }))}</span><span class="meta w-meta"></span><span class="spacer"></span><button class="btn ghost xs act" type="button" data-prompt="wb-${n}">${esc(t('run.instructionReceived'))}</button></div>
       <div class="wb-body">${WB_INNER()}
         <div class="round-foot hidden"></div>
@@ -505,7 +540,7 @@ function ensureWbCard(n) {
 function ensureTeamCard(n, members = null) {
   if (app.t.teams.has(n)) return app.t.teams.get(n);
   const node = appendThread(el(`
-    <div class="msg wb team" id="wb-${n}">
+    <div class="msg wb team" id="wb-${n}">${figRail(execEngine())}
       <div class="msg-head">${emb('wb')}<span class="who">${esc(t('run.wbTeam'))}</span><span class="what">${esc(t('round.n', { n }))}</span><span class="meta w-meta"></span><span class="spacer"></span><button class="btn ghost xs act" type="button" data-board="${n}">${ICON.list}${esc(t('team.board'))}</button></div>
       <div class="wb-body"><div class="lanes"></div>
         <div class="merge-line hidden"></div>
@@ -794,6 +829,11 @@ function handleEvent(ev) {
       const c = gptCardFor(ev);
       // the card names the engine that answered, even after the lead was switched mid-task
       if (ev.engine && !c.label.startsWith('review-')) $('.who', c.node).textContent = ENGINE_NAMES[ev.engine] || ev.engine;
+      if (ev.engine) {
+        c.engine = ev.engine;
+        setSpeaker(c.node, ev.engine);
+      }
+      if (!c.done) c.node.classList.add('live');
       app.t.prompts.set(ev.label, ev.prompt);
       if (!c.done) $('.g-status .txt', c.node).textContent = ev.resume ? t('run.thinking') : t('run.newSessionThinking');
       break;
@@ -869,8 +909,7 @@ function handleEvent(ev) {
       const c = wbFor(ev);
       if (ev.engine && !ev.member) {
         $('.msg-head .who', c.node).textContent = ENGINE_NAMES[ev.engine] || ev.engine;
-        const av = $('.msg-head .avatar', c.node);
-        if (av && av.dataset.engine !== ev.engine) av.outerHTML = chibiFace(ev.engine);
+        setSpeaker(c.node.closest('.msg.wb') || c.node, ev.engine);
       }
       (ev.member ? c.node : c.node.closest('.msg.wb') || c.node).classList.add('live');
       const pkey = ev.member ? `wb-${ev.round}-${ev.member}` : `wb-${ev.round}`;
@@ -1036,8 +1075,8 @@ function handleEvent(ev) {
       sysLine(t('run.askLine'), 'warn', ev.t);
       break;
     case 'run.status':
-      // a stopped or paused task has nobody working: the executor's face stops breathing
-      if (ev.status !== 'running') document.querySelectorAll('#timeline .msg.wb.live').forEach((n) => n.classList.remove('live'));
+      // a stopped or paused task has nobody working: the faces stop breathing
+      if (ev.status !== 'running') document.querySelectorAll('#timeline .msg.live').forEach((n) => n.classList.remove('live'));
       if (['paused', 'stopped', 'failed'].includes(ev.status) && (ev.message || ev.key)) sysLine(`${tStatus(ev.status)}: ${msgText(ev)}`, ev.status === 'failed' ? 'err' : 'warn', ev.t);
       break;
     case 'done': {
@@ -1058,6 +1097,12 @@ function handleEvent(ev) {
       break;
   }
 }
+
+// pointing at a handoff plays it again
+$('#timeline').addEventListener('mouseover', (e) => {
+  const relayNode = e.target.closest?.('.relay');
+  if (relayNode && !relayNode.contains(e.relatedTarget)) playHandoff(relayNode.closest('.handoff'));
+});
 
 $('#timeline').addEventListener('click', (e) => {
   const toggle = e.target.closest('[data-toggle]');
