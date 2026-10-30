@@ -3,6 +3,29 @@
 Running notes for whoever picks this up next (human or agent). Newest first inside each section.
 Repo: https://github.com/snozzz/oneiropolos — every module lands as its own commit so it can be reverted alone.
 
+## Follow-up (2026-10-30) · 0.5.1
+
+Asked for (after looking at 0.5.0): the lead card still showed the compass, not GPT's chibi; the sidebar should list
+every signed-in account instead of the lead/executor pair; the chibis should stand on their own in the blank beside
+the conversation and move down with it; a good animation for "hand over to WorkBuddy".
+
+- Lead cards (and the reviewer) show the chibi face of the engine that answered (`setSpeaker` swaps face and figure on
+  `gpt.start`/`wb.start`); faces also in the GPT and WorkBuddy panels. Role emblems stay in the help diagram, the
+  "+" menu and the user bubble.
+- Figures (`chibiFigure`, `.fig-rail` in `public/style.css`): a rail beside each message — inside the lead card,
+  extended over its header/footer rows, and right of the executor's block — holds a sticky figure, so it stays in view
+  while its message scrolls by. `.chat-scroll` is a size container: from 960 px wide the lead figure shows and the
+  executor's block keeps 160 px on the right for hers; from 1120 px hers stands outside the column. A rail shorter
+  than 95 px hides its figure. `.live` (lead thinking / executor working) bobs it; live cards walk in (`.enter`).
+- Handoff (`relay`, `playHandoff` in `public/js/thread.js`): lead face · dotted line with a paper plane · executor
+  face. Live: the lead's figure throws, the plane arcs over, the executor's face catches it (pop + ring), the
+  instruction unfolds. Pointing at the relay replays it. `prefers-reduced-motion` turns all of it off.
+- Sidebar (`renderAccounts` in `public/js/main.js`): one row per signed-in engine with its face, GPT's quota or the
+  account name; the tooltip names the role it plays next; "Not signed in · Sign in" when none.
+- Verified: screenshots at 900 / 1280 / 1500 px, light and dark; animation frames (offscreen WKWebView with the
+  snapshot tool's animation-off style removed, animations paused at fixed times); a live replay (events appended to a
+  copied task while the page is open) — handoff played, figures entered, no `.live` left after done. 60 tests pass.
+
 ## Current round (2026-10-29) · 0.5.0
 
 Asked for:
