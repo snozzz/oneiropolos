@@ -1,11 +1,11 @@
 // Entry point: sidebar, routing, global shortcuts, command palette.
 import { $, $$, ACTIVE, actions, api, app, applyTheme, esc, firstLine, fmtRelative, loadUi, native, oneLine, tPhase, tStatus } from './core.js';
-import { ICON, BRAND, statusGlyph } from './brand.js';
+import { ICON, BRAND, chibiFace, statusGlyph } from './brand.js';
 import { lang, locale, t, translateDom, shortcut } from './i18n.js';
 import { applyTemplate, fillTemplate, findTemplate, focusGoal, goalText, initHome, insertIntoGoal, loadTemplates, openParams, openTemplateMenu, pickFolder, pickRunSettings, renderHero, renderLede, setNewMode, setNewTeam, updateHomeChips } from './home.js';
 import { closeModal, closePalette, closePopover, modalOpen, openPalette, paletteOpen, popoverOpen } from './overlay.js';
 import { initContextMenus } from './ctxmenu.js';
-import { ENGINE_NAMES, ENGINE_VENDORS, engineOf, engineStatus, useRoleNames } from './engines.js';
+import { ENGINE_IDS, ENGINE_NAMES, ENGINE_VENDORS, engineOf, engineStatus, useRoleNames } from './engines.js';
 import { openGptPanel, openHelp, openSettings, quotaText, registerPanels } from './panels.js';
 import { applyDensity, closeRun, initThread, openAside, openRun, renderHeader, runAction, setDensity } from './thread.js';
 import { openAgentsPicker, openGitLine, openLoops, openNewPrompt, openNotebook, openReview, openSkillsPicker, openTodoPicker, openUsage, runExecuteCommand } from './tools.js';
@@ -23,32 +23,21 @@ const isNative = document.documentElement.classList.contains('native');
 native?.postMessage({ type: 'language', value: lang });
 
 // ---------- accounts ----------
-function setAccount(btn, ok, text, { low = false, title = '' } = {}) {
-  btn.className = `acct ${ok ? 'ok' : 'bad'}`;
-  const v = $('.val', btn);
-  v.textContent = text;
-  v.classList.toggle('low', low);
-  btn.title = title;
-}
-
-/** The two engines the next task will use (lead, executor), with their sign-in state; one chip when they are the same. */
+/** Every signed-in account, with GPT's quota or the account name; one line to sign in when there is none. */
 function renderAccounts() {
   if (!app.env?.engines) return;
   const st = app.newSettings || app.env.config;
-  const ids = [engineOf(st, 'lead'), engineOf(st, 'executor')];
-  ['#chip-lead', '#chip-exec'].forEach((sel, i) => {
-    const btn = $(sel);
-    const id = ids[i];
-    btn.classList.toggle('hidden', i === 1 && ids[0] === ids[1]);
+  const roles = (id) => [engineOf(st, 'lead') === id && st?.loop?.useLead !== false ? t('role.short.lead') : '', engineOf(st, 'executor') === id ? t('role.short.executor') : ''].filter(Boolean);
+  const rows = ENGINE_IDS.filter((id) => engineStatus(id).loggedIn).map((id) => {
     const a = engineStatus(id);
-    $('.name', btn).textContent = ENGINE_NAMES[id];
     const q = id === 'chatgpt' ? app.quota : null;
-    const quota = a.loggedIn && q ? quotaText(q) : '';
+    const quota = q ? quotaText(q) : '';
     const left = q ? Math.min(...[q.primary, q.secondary].filter(Boolean).map((w) => 100 - w.usedPercent)) : 100;
-    const text = !a.installed ? t('acct.notInstalled') : !a.loggedIn ? t('acct.notLoggedIn') : quota || a.account || t('acct.loggedIn');
-    const role = i === 0 && ids[0] !== ids[1] ? t('role.short.lead') : i === 1 ? t('role.short.executor') : `${t('role.short.lead')} · ${t('role.short.executor')}`;
-    setAccount(btn, a.loggedIn, text, { low: Boolean(quota) && left <= 15, title: `${role} · ${ENGINE_VENDORS[id]}${a.plan ? ` · ${a.plan}` : ''}` });
+    const account = a.account && a.account !== ENGINE_VENDORS[id] ? a.account : '';
+    const title = [ENGINE_VENDORS[id], a.plan, a.account, ...roles(id)].filter(Boolean).join(' · ');
+    return `<button class="acct ok" type="button" title="${esc(title)}">${chibiFace(id)}<span class="name">${esc(ENGINE_NAMES[id])}</span><span class="val${quota && left <= 15 ? ' low' : ''}">${esc(quota || account)}</span></button>`;
   });
+  $('#acct-rows').innerHTML = rows.join('') || `<button class="acct bad" type="button"><span class="dot"></span><span class="name">${esc(t('acct.notLoggedIn'))}</span><span class="val">${esc(t('acct.signIn'))}</span></button>`;
 }
 
 async function refreshEnv() {
@@ -85,8 +74,9 @@ async function refreshCommands() {
   }
 }
 
-$('#chip-lead').onclick = () => openSettings('accounts');
-$('#chip-exec').onclick = () => openSettings('accounts');
+$('#acct-rows').onclick = (e) => {
+  if (e.target.closest('.acct')) openSettings('accounts');
+};
 $('#btn-settings').onclick = () => openSettings();
 $('#btn-help').onclick = openHelp;
 

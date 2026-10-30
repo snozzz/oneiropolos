@@ -450,6 +450,8 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; flex: none; accen
 }
 .composer textarea:focus { box-shadow: none; }
 .composer-tools { display: flex; align-items: center; gap: 4px; row-gap: 6px; margin-top: 9px; flex-wrap: wrap; min-width: 0; }
+.acct-rows { display: flex; flex-direction: column; gap: 1px; }
+.acct .avatar { width: 20px; height: 20px; margin-left: -2px; }
 .composer-tools .send-btn { margin-left: auto; }
 .composer-hint { font-size: 12px; color: var(--faint); white-space: nowrap; }
 .composer-hint b, .composer-caption b { font-weight: 500; color: var(--muted); }
